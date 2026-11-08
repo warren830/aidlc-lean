@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "aidlc-lean-session-start",
+      "trigger": "SessionStart",
+      "description": "AI-DLC Lean: logs the session and gives the assistant the active intent's stage progress and next steps.",
+      "action": { "type": "command", "command": "python3 .kiro/aidlc-lean/aidlc_lean.py hook SessionStart" },
+      "timeout": 60
+    }
+  ]
+}
