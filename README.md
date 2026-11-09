@@ -470,7 +470,7 @@ python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目
   - 这几轮里 K3 从没试过走被拦的捷径（"先写代码，回头再批""发布后不走流程小改一下"都拒绝了），所以大部分关卡在真机上没真正触发过。v0.2 真机上被拦过的只有 verify（普通模式那次把 verify 和 commit 串成一条命令）、protected（改受保护的契约测试，人打 `allow test change` 后放行）、records（一次误拦：用 shell 列审计目录）和 contract（按人的要求故意去改别的团队的契约）。requirements、design、plan、released、intent、danger 这些关卡靠单元测试覆盖。
   - 11-08 实测之后这一轮的修复（子代理的任务说明不再算人的发言、CR 只给申请的团队放行并且能关闭、计划做到一半时的提示、派单写进文件等）只有单元测试，还没在 Kiro 里重跑。
   - **v0.3 的构想段（IDEATION 审批、`ideation` 关卡）、CI 流水线和运维段只有单元测试**，没做模拟跑，也没在 Kiro 里真跑过。上面的真机测试都是 v0.2。两张新技能卡写给产品经理和运维用，AI 照着它们能不能把页面写好、会不会编数字，还没验证过。
-  - **环境**：这几轮用的是测试人自己的 Kiro 配置。默认 agent 是 amzn-builder，它自己的 hook、记忆和全局 steering 也进了会话，K3 评审那次也加载了。沙箱允许 Kiro 读 `~/.kiro`，用户级的 agent、hook 和 MCP 都会加载。要公平地测，请用干净的 Kiro 配置（单独的 HOME），或者指定一个不带用户 hook、记忆和 MCP 的 agent。
+  - **环境**：这几轮用的是测试人自己的 Kiro 配置。默认 agent 是测试人平时用的那个，它自己的 hook、记忆和全局 steering 也进了会话，K3 评审那次也加载了。沙箱允许 Kiro 读 `~/.kiro`，用户级的 agent、hook 和 MCP 都会加载。要公平地测，请用干净的 Kiro 配置（单独的 HOME），或者指定一个不带用户 hook、记忆和 MCP 的 agent。
 
 ## 已知限制（说清楚）
 
