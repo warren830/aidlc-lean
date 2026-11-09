@@ -5,14 +5,14 @@ description: Use in AI-DLC Lean regulated mode - what is stricter (hash-bound ap
 # Regulated mode
 
 ## What is stricter
-- Every code change needs an active intent, with approved requirements and design (INCEPTION, or REQUIREMENTS and DESIGN; design may be skipped only as `Size: small`) and the unit's approved code-generation plan. Never suggest that a person makes a change outside the flow: offer a new intent.
+- Every code change needs an active intent with approved requirements and design (INCEPTION, or REQUIREMENTS and DESIGN; design may be skipped only as `Size: small`), IDEATION when Ideation is used, and the unit's approved code-generation plan. Never suggest a change outside the flow: offer a new intent.
 - **PLAN per unit**: once `construction/plans/<unit>-code-generation-plan.md` is written, run `lean request PLAN --unit <unit>` and wait for `approve PLAN <hash>` (the hash identifies the plan). For a file in no known unit, at least one plan must exist and all must be approved.
-- **The hash is required**: an approval must quote the hash from `lean request`, e.g. `approve INCEPTION 1a2b3c4d`.
+- **The hash is required**: an approval must quote the `lean request` hash, e.g. `approve INCEPTION 1a2b3c4d`.
 - **Stale blocks**: a page edited after its approval is stale and blocks code writes until approved again; in a plan, ticking a step keeps the approval, editing a step's text voids it.
 - **Evidence**: `lean verify` also writes `construction/build-and-test/evidence/verify-<ts>.md`: commands, exit codes, output digests and tails. Common secret shapes are masked (values of keys named like password, secret, token or credential; Authorization and Bearer headers; URL passwords; GitHub, AWS and Slack tokens; PEM keys), but a secret with no telling name or prefix is not, so keep checks from printing secrets. The verify record keeps the evidence file's sha256.
 - Commits and `lean release` need checks configured; commits also need a green verify on the exact code being committed.
 - A hook script error blocks tool calls instead of letting them through: run `lean doctor`, fix it, never bypass it.
-- **Approvers**: `approvers` in `aidlc-docs/lean.json` can restrict, by git email, who may approve each kind (REQUIREMENTS, DESIGN, INCEPTION, PLAN, RELEASE, CR).
+- **Approvers**: `approvers` in `aidlc-docs/lean.json` can restrict, by git email, who may approve each kind (IDEATION, REQUIREMENTS, DESIGN, INCEPTION, PLAN, RELEASE, CR).
 
 ## What the trail contains (`aidlc-docs/audit/<clone>.jsonl`, hash-chained, committed)
 - Sessions and every human turn (a hash, not the text); subagent task prompts are logged apart, never as human turns.

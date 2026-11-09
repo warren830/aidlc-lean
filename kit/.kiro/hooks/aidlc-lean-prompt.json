@@ -4,7 +4,7 @@
     {
       "name": "aidlc-lean-prompt",
       "trigger": "UserPromptSubmit",
-      "description": "AI-DLC Lean: records that a person typed this turn and records approvals and rejections typed on their own line, such as 'approve INCEPTION <hash>' (kinds REQUIREMENTS, DESIGN, INCEPTION, PLAN, RELEASE, CR-<team>-<n>; only a person's own message can approve).",
+      "description": "AI-DLC Lean: records that a person typed this turn and records approvals and rejections typed on their own line, such as 'approve INCEPTION <hash>' (kinds IDEATION, REQUIREMENTS, DESIGN, INCEPTION, PLAN, RELEASE, CR-<team>-<n>; only a person's own message can approve).",
       "action": { "type": "command", "command": "python3 .kiro/aidlc-lean/aidlc_lean.py hook UserPromptSubmit" },
       "timeout": 60
     }

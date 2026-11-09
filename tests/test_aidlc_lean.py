@@ -43,6 +43,13 @@ STANDIN_TEMPLATES = {
     "cr.md": "# {{ID}}: {{TITLE}}\n\n- Requested by team: {{FROM}}\n- Owner team: {{OWNER}}\n- Paths: {{PATHS}}\n"
              "- Opened: {{DATE}}\n\n## Change\n",
 }
+# v0.3: the pages of the optional Ideation and Operations phases and of ci-pipeline
+STANDIN_TEMPLATES.update({name: "# {{STAGE}}: {{TITLE}}\n\nIntent: {{INTENT}} · Created: {{DATE}}\n\n## Notes\n"
+                                "<!-- hint -->\n" for name in ("intent-statement.md", "market-research.md", "feasibility-assessment.md",
+                                       "scope-document.md", "team-assessment.md", "wireframes.md",
+                                       "initiative-brief.md", "ci-config.md", "deployment-strategy.md",
+                                       "environment-inventory.md", "deployment-log.md", "observability.md",
+                                       "load-test-plan.md", "runbooks.md", "feedback-loop.md")})
 REQUIREMENTS_TEXT = ("# Requirements: refunds\n\nSize: %s\n\n## Goal\nBuyers get refunds within 14 days.\n\n"
                      "## Acceptance criteria\n| ID | Given / when | Then |\n|---|---|---|\n| AC-1 | refund day 3 | 200 |\n")
 DESIGN_TEXT = ("# Application Design: refunds\n\n## Components and responsibilities\n| Component | Responsibility |\n"

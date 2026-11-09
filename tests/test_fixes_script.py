@@ -374,11 +374,13 @@ class ContextCaps(Helpers, Base):
             self.assertLessEqual(len(lines), 40)
             self.assertTrue(lines[-1].startswith("(truncated; run"), lines[-1])
             self.assertIn("  From aidlc-state.md (Next):\n    1. Finish the refund endpoint\n    2. Ask finance about "
-                          "VAT\n  Stage progress:\n    - [ ] Reverse Engineering\n", out)
+                          "VAT\n  Stage progress:\n    - [S] Ideation — skipped: not requested (lean new without "
+                          "--ideation)\n    - [ ] Reverse Engineering\n", out)
             self.assertIn("- [ ] Code Generation (u0)", out)
             self.assertNotIn("- [ ] Release", out)  # the cap cut the end of the progress list
         st = self.tool("status").stdout  # not capped: everything, the progress list first as before
-        self.assertIn("    - [ ] Release\n  From aidlc-state.md (Next):\n    1. Finish the refund endpoint\n", st)
+        self.assertIn("    - [ ] Feedback Optimization\n  From aidlc-state.md (Next):\n    1. Finish the refund "
+                      "endpoint\n", st)  # v0.3: the Operations stages come last
 
     def test_short_context_is_not_cut(self):
         self.intent()
@@ -456,9 +458,14 @@ class Commands(Helpers, Base):
         self.approve("RELEASE")
         st = self.tool("status").stdout
         self.assertIn("- [x] Release — released: approved", st)
-        self.assertIn("Next: nothing: this intent is released", st)
+        # v0.3: Operations may still be recorded after RELEASE (guidance only; the intent stays released)
+        self.assertIn("Next: optional: record deployment and operations (skill aidlc-lean-operations)", st)
         self.assertIn("new <slug>", st)
         self.assertNotIn("aidlc_lean.py release`", st)
+        self.assertEqual(self.tool("stage", "skip", "operations", "--reason", "a library").returncode, 0)
+        st = self.tool("status").stdout
+        self.assertIn("Next: nothing: this intent is released", st)
+        self.assertIn("RELEASED: RELEASE is approved", st)
 
     def test_audit_verify_without_ledger_files_fails(self):
         shutil.rmtree(os.path.join(self.dir, DOCS, "audit"))

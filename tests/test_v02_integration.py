@@ -24,8 +24,12 @@ KIT = os.path.join(REPO, "kit", ".kiro")
 PACK = os.path.join(REPO, "kit-pstack", ".kiro")
 BEGIN = "<!-- lean:begin progress -->"
 END = "<!-- lean:end progress -->"
-GATES = {"records", "protected", "contract", "intent", "released", "requirements", "design", "plan", "danger",
-         "verify"}
+GATES = {"records", "protected", "contract", "intent", "released", "ideation", "requirements", "design", "plan",
+         "danger", "verify"}
+SKILL_OF_PHASE = {"ideation": "aidlc-lean-ideation", "inception": "aidlc-lean-inception",  # v0.3: two new skills
+                  "construction": "aidlc-lean-construction", "operations": "aidlc-lean-operations"}
+PHASE_NAMES = {"ideation": "Ideation", "inception": "Inception", "construction": "Construction",
+               "operations": "Operations"}
 
 
 def load_core():
@@ -63,13 +67,13 @@ class KitTexts(unittest.TestCase):
 
     def test_word_caps(self):
         self.assertLessEqual(len(self.steering.split()), 1000)
-        self.assertEqual(len(self.skills), 6)
+        self.assertEqual(len(self.skills), 8)
         for path, text in self.skills.items():
             self.assertLessEqual(len(text.split()), 600, path)
 
     def test_commands_stage_ids_and_kinds_exist(self):
         commands = set(self.core.COMMANDS) | {"hook"}
-        ids = set(self.core.STAGE_BY_ID)
+        ids = set(self.core.STAGE_BY_ID) | set(self.core.PHASES)  # `stage skip ideation|operations`
         for path, text in self.agent_texts.items():
             for cmd in re.findall(r"`lean ([a-z-]+)", text):
                 self.assertIn(cmd, commands, path)
@@ -87,18 +91,19 @@ class KitTexts(unittest.TestCase):
         self.assertEqual(set(re.findall(r"blocked \(([a-z]+)\)", construction)), GATES)  # every gate explained
 
     def test_stage_table_matches_the_steering_skills_and_templates(self):
-        inception = self.skills[os.path.join(KIT, "skills", "aidlc-lean-inception", "SKILL.md")]
-        construction = self.skills[os.path.join(KIT, "skills", "aidlc-lean-construction", "SKILL.md")]
-        for n, st in enumerate(self.core.STAGES, 1):
-            self.assertIn("%d. `%s`" % (n, st.id), self.steering)  # the steering lists them in AI-DLC order
+        # the steering numbers the stages of every intent in AI-DLC order and names the optional phases' stages
+        numbered = [st for st in self.core.STAGES if st.phase not in self.core.PHASES]
+        for n, st in enumerate(numbered, 1):
+            self.assertIn("%d. `%s`" % (n, st.id), self.steering)
+        for st in self.core.STAGES:
+            if st.phase in self.core.PHASES:
+                self.assertIn("`%s`" % st.id, self.steering)
             if not st.template:
                 continue
-            doc = st.doc.replace("{unit}", "<unit>")
-            self.assertIn("`%s`: `%s`" % (st.id, doc), self.steering)
-            self.assertIn("(`%s`" % st.id, construction if st.per_unit else inception)
+            skill = "aidlc-lean-operations" if st.id == "ci-pipeline" else SKILL_OF_PHASE[st.phase]
+            self.assertIn("(`%s`" % st.id, self.skills[os.path.join(KIT, "skills", skill, "SKILL.md")], st.id)
             tpl = self.templates[os.path.join(KIT, "aidlc-lean", "templates", st.template)]
-            phase = "Construction" if st.per_unit else "Inception"
-            self.assertIn("AI-DLC stage: %s · %s · " % (phase, st.name), tpl.splitlines()[2])
+            self.assertIn("AI-DLC stage: %s · %s · " % (PHASE_NAMES[st.phase], st.name), tpl.splitlines()[2], st.id)
         self.assertEqual(sorted(os.path.basename(p) for p in self.templates), sorted(self.core.TEMPLATE_NAMES))
 
     def test_template_placeholders_and_markers(self):
@@ -217,7 +222,8 @@ class ReleaseRecord(Base):
         self.put("src/late.py", "x = 1\n")  # the code changes after `lean release`, the request is still out
         out = self.say("approve RELEASE %s" % h)
         self.assertIn("Approval of RELEASE NOT recorded", out.stdout)
-        self.assertIn("- [-] Release — release.md is for older code", self.tool("status").stdout)
+        # the committed page shows the commit (v0.3); this clone's status says what its working tree changes
+        self.assertIn("Release: release.md is for older code than this clone's working tree", self.tool("status").stdout)
         os.remove(os.path.join(self.dir, "src", "late.py"))  # back to the code `lean release` checked
         out = self.say("approve RELEASE %s" % h)
         self.assertIn("Recorded: RELEASE approved (sha %s)" % h, out.stdout)

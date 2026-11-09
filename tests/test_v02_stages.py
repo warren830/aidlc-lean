@@ -518,8 +518,10 @@ class ReleasedIntent(V02):
         """Status and the session context say so; the stage commands and `release` refuse the intent."""
         for text in (self.status(), self.hook("SessionStart", {}).stdout):
             self.assertIn("Active intent: aidlc-docs/%s (feature x)\n%s\n" % (i, RELEASED_LINE), text)
-            self.assertIn("Next: nothing: this intent is released (RELEASE approved). Start new work, follow-ups and "
-                          "fixes included, with `python3 .kiro/aidlc-lean/aidlc_lean.py new <slug>`; ", text)
+            # v0.3: Operations stages without a record are offered (guidance only; the intent stays released)
+            self.assertIn("Next: optional: record deployment and operations (skill aidlc-lean-operations) or `python3 "
+                          ".kiro/aidlc-lean/aidlc_lean.py stage skip operations --reason ...`; the intent stays released. "
+                          "New work: `python3 .kiro/aidlc-lean/aidlc_lean.py new <slug>`; ", text)
         for args in (["start", "user-stories"], ["done", "code-generation", "--note", "more"],
                      ["skip", "user-stories", "--reason", "late"]):
             p = self.tool("stage", *args)
@@ -539,7 +541,7 @@ class Released(ReleasedIntent):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(len(self.events("BLOCKED")), blocked)
         self.assertEqual(self.read(".aidlc-lean/counters.json"), counters)  # not counted for its aidlc-state.md
-        self.assertIn("with `python3 .kiro/aidlc-lean/aidlc_lean.py new <slug>`; small edits need no intent\n",
+        self.assertIn("New work: `python3 .kiro/aidlc-lean/aidlc_lean.py new <slug>`; small edits need no intent\n",
                       self.status())
         self.assert_closed_record(i)
         summary = self.read(self.ipath(i, SUMMARY))
@@ -567,8 +569,8 @@ class ReleasedRegulated(ReleasedIntent):
         self.assertIn("blocked (released): %s is released (RELEASE approved). Start follow-ups and fixes as a new "
                       "intent: `python3 .kiro/aidlc-lean/aidlc_lean.py new <slug>`." % i, r.stderr)
         self.assertEqual(self.events("BLOCKED")[-1]["data"]["gate"], "released")
-        self.assertIn("with `python3 .kiro/aidlc-lean/aidlc_lean.py new <slug>`; regulated mode blocks code changes "
-                      "until then\n", self.status())
+        self.assertIn("New work: `python3 .kiro/aidlc-lean/aidlc_lean.py new <slug>`; regulated mode blocks code until "
+                      "then\n", self.status())
         self.assert_closed_record(i)
         j = self.ready("follow-up")  # a new intent: its own gates, here the plan of its unit
         r = self.write("src/app.py")
@@ -898,7 +900,9 @@ class MultiTeamUnits(V02):
         self.ok("stage", "start", "application-design")
         self.design(i)
         self.ok("stage", "start", "units")
-        self.units(i, [("catalog", "catalog", "src/catalog/**"), ("payments", "payments", "src/payments/**")])
+        # the payments contract is part of the payments unit: it is code (v0.3), listed in that unit's Paths
+        self.units(i, [("catalog", "catalog", "src/catalog/**"),
+                       ("payments", "payments", "src/payments/**, aidlc-docs/contracts/payments/**")])
         p = self.ok("stage", "done", "units", "--note", "two units; they meet at the payments contract")
         self.assertIn("Units: catalog, payments", p.stdout)
         self.approve("INCEPTION")
@@ -920,10 +924,13 @@ class MultiTeamUnits(V02):
         out, _ = self.approve("CR-catalog-1", team="payments")
         self.assertIn("Recorded: CR-catalog-1 approved", out.stdout)
         self.assertEqual(self.events("APPROVED")[-1]["data"]["owner_team"], "payments")
-        self.assertEqual(self.write("aidlc-docs/contracts/payments/api.yaml").returncode, 0)
+        r = self.write("aidlc-docs/contracts/payments/api.yaml")  # unlocked; regulated: its unit's plan rules it
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("blocked (plan): the code-generation plan of unit payments", r.stderr)
         out, _ = self.approve("PLAN", "--unit", "payments", team="payments")  # in the payments clone
         self.assertIn("unit payments", out.stdout)
         self.assertEqual(self.events("APPROVED")[-1]["actor"]["team"], "payments")
+        self.assertEqual(self.write("aidlc-docs/contracts/payments/api.yaml").returncode, 0)
         self.assertEqual(self.write("src/payments/app.py").returncode, 0)
         st = self.status()
         self.assertIn("- [x] Units Generation — done", st)

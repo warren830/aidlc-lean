@@ -200,10 +200,74 @@ class SubfolderReinstall(ReinstallMixin, Base):
         self.assertEqual(self.mode(), (False, False))
 
 
+def kit_names(path):
+    """The template names in a folder as the installer sees them: files only, no dotfiles (e.g. Finder's .DS_Store)."""
+    return sorted(n for n in os.listdir(path) if not n.startswith(".") and os.path.isfile(os.path.join(path, n)))
+
+
+# templates/lean.json exactly as v0.2.0 shipped it (git show 37ecb45:kit/.kiro/aidlc-lean/templates/lean.json)
+V02_LEAN_JSON = (
+    '{\n'
+    '  "version": 1,\n'
+    '  "regulated": false,\n'
+    '  "multi_team": false,\n'
+    '  "plan": "auto",\n'
+    '  "checks": [],\n'
+    '  "protected_paths": [],\n'
+    '  "free_paths": ["*.md", "docs/**"],\n'
+    '  "contracts_dir": "aidlc-docs/contracts",\n'
+    '  "teams": [],\n'
+    '  "approvers": {},\n'
+    '  "_help": "This is aidlc-docs/lean.json: people edit it, the agent cannot. Everything AI-DLC Lean k'
+    'eeps in git lives under aidlc-docs/: one folder per intent, the audit ledger (aidlc-docs/audit/) and'
+    ' the contracts (contracts_dir). checks: commands that must all pass, e.g. [\\"pytest -q\\", \\"ruff che'
+    'ck .\\"]; lean verify runs them and writes the intent\'s construction/build-and-test/build-and-test-su'
+    'mmary.md. protected_paths: acceptance tests the agent may not change, e.g. [\\"tests/acceptance/**\\"]'
+    ". plan: whether each unit's code-generation plan needs a PLAN approval before its code: auto (regula"
+    'ted mode only) | always | never. approvers: optional allow-lists by git email per approval kind (REQ'
+    'UIREMENTS, DESIGN, INCEPTION, PLAN, RELEASE, CR), e.g. {\\"RELEASE\\": [\\"lead@corp.com\\"]}. deny_comm'
+    'ands and fingerprint_exclude can be overridden too (see aidlc_lean.py DEFAULT_CONFIG)."\n'
+    '}\n'
+)
+
+
+# templates/lean.json of a v0.1 install. Design §4 says v0.2 kept it "unchanged from v0.1", but v0.1 lived under
+# aidlc/ (README: its config says "contracts_dir": "aidlc/contracts"), so it is modelled with the v0.1 paths: not
+# byte-equal to any version a later kit shipped.
+V01_LEAN_JSON = ('{\n  "version": 1,\n  "regulated": false,\n  "multi_team": false,\n  "plan": "auto",\n  "checks": [],\n'
+                 '  "protected_paths": [],\n  "free_paths": ["*.md", "docs/**"],\n  "contracts_dir": "aidlc/contracts",\n'
+                 '  "teams": [],\n  "approvers": {},\n  "_help": "This is aidlc/lean.json: people edit it, the agent cannot."\n}\n')
+V01_TEMPLATES = ("CR.md", "DECISIONS.md", "PLAN.md", "SPEC.md", "STATE.md", "UNITS.md")  # with lean.json
+
+
+def as_v01_templates(t, names=V01_TEMPLATES):
+    """Make the project's template folder look like a v0.1 install: the v0.1 names and lean.json, which later kits
+    ship too, and no kit-templates.sha256. In a later install a file with a v0.1 name is the team's."""
+    tdir = os.path.join(t.dir, ".kiro", "aidlc-lean", "templates")
+    shutil.rmtree(tdir)
+    os.makedirs(tdir)
+    manifest = os.path.join(t.dir, ".kiro", "aidlc-lean", "kit-templates.sha256")
+    if os.path.exists(manifest):
+        os.remove(manifest)
+    t.put(".kiro/aidlc-lean/templates/lean.json", V01_LEAN_JSON)
+    for name in names:
+        t.put(".kiro/aidlc-lean/templates/" + name, "# %s as v0.1 shipped it\n" % name)
+
+
+def case_insensitive(path):
+    probe = os.path.join(path, "CaseProbe")
+    open(probe, "w").close()
+    try:
+        return os.path.exists(os.path.join(path, "caseprobe"))
+    finally:
+        os.remove(probe)
+
+
 class UpgradeFromV01(ReinstallMixin, Base):
     """Re-installing over a v0.1 install: the retired kit skills and templates go, the team's own skills stay."""
 
     def test_reinstall_removes_the_v01_skills_and_templates_and_keeps_other_skills(self):
+        as_v01_templates(self)
         for path in (".kiro/skills/aidlc-lean-spec/SKILL.md", ".kiro/skills/aidlc-lean-build/SKILL.md",
                      ".kiro/aidlc-lean/templates/SPEC.md", ".kiro/aidlc-lean/templates/PLAN.md",
                      ".kiro/aidlc-lean/templates/STATE.md", ".kiro/aidlc-lean/templates/UNITS.md"):
@@ -221,8 +285,8 @@ class UpgradeFromV01(ReinstallMixin, Base):
         installed = os.listdir(os.path.join(self.dir, ".kiro/skills"))
         self.assertEqual(sorted(n for n in installed if n.startswith("aidlc-lean-")),
                          sorted(n for n in os.listdir(os.path.join(kit, "skills")) if n.startswith("aidlc-lean-")))
-        self.assertEqual(sorted(os.listdir(os.path.join(self.dir, ".kiro/aidlc-lean/templates"))),
-                         sorted(os.listdir(os.path.join(kit, "aidlc-lean", "templates"))))
+        self.assertEqual(kit_names(os.path.join(self.dir, ".kiro/aidlc-lean/templates")),
+                         kit_names(os.path.join(kit, "aidlc-lean", "templates")))
         self.assertEqual(self.read(".kiro/skills/team-checklist/SKILL.md"), mine)  # not the kit's: kept
         self.assertNotIn("Removed", self.reinstall().stdout)  # nothing left to remove
 
@@ -237,10 +301,7 @@ class CaseOnlyRenames(ReinstallMixin, Base):
 
     def test_reinstall_lets_git_add_record_the_new_names(self):
         tdir = ".kiro/aidlc-lean/templates/"
-        for new, old in (("cr.md", "CR.md"), ("decisions.md", "DECISIONS.md")):  # a v0.1 kit as committed
-            os.remove(os.path.join(self.dir, tdir + new))
-            self.put(tdir + old, "from v0.1\n")
-        self.put(tdir + "SPEC.md", "from v0.1\n")
+        as_v01_templates(self, ("CR.md", "DECISIONS.md", "SPEC.md"))  # a v0.1 kit as committed
         self.sh(["git", "add", "-A"])
         self.assertEqual(self.sh(["git", "commit", "-qm", "v0.1 kit"]).returncode, 0)
         old = {tdir + n for n in ("CR.md", "DECISIONS.md", "SPEC.md")}
@@ -249,14 +310,68 @@ class CaseOnlyRenames(ReinstallMixin, Base):
         self.assertIn("Dropped from the git index (old kit names; `git add -A` records the current ones): ", p.stdout)
         for name in sorted(old):
             self.assertIn(name, p.stdout)
-        kit = sorted(os.listdir(os.path.join(REPO, "kit", ".kiro", "aidlc-lean", "templates")))
-        self.assertEqual(sorted(os.listdir(os.path.join(self.dir, tdir))), kit)  # the files on disk are the kit's
+        kit = kit_names(os.path.join(REPO, "kit", ".kiro", "aidlc-lean", "templates"))
+        self.assertEqual(kit_names(os.path.join(self.dir, tdir)), kit)  # the files on disk are the kit's
         self.sh(["git", "add", "-A"])
         names = self.tracked()
         self.assertEqual(sorted(n[len(tdir):] for n in names if n.startswith(tdir)), kit)  # cr.md, decisions.md, ...
         self.assertFalse(old & names)
         self.assertIn(".kiro/aidlc-lean/aidlc_lean.py", names)  # the kit files that kept their names stay tracked
         self.assertNotIn("Dropped", self.reinstall().stdout)  # nothing left to drop
+
+    def test_a_real_v01_install_is_recognised_although_lean_json_is_a_current_name(self):  # QA R2 F01
+        tdir = ".kiro/aidlc-lean/templates/"
+        as_v01_templates(self)  # the six v0.1 names and its lean.json, as committed
+        self.sh(["git", "add", "-A"])
+        self.assertEqual(self.sh(["git", "commit", "-qm", "v0.1 kit"]).returncode, 0)
+        p = self.reinstall()
+        self.assertNotIn("Kept", p.stdout)  # the v0.1 kit's files are not the team's
+        self.assertNotIn(".kit-new", p.stdout)
+        self.assertIn("Removed old kit templates (the kit no longer ships them): ", p.stdout)
+        dropped = next(line for line in p.stdout.splitlines() if line.startswith("Dropped from the git index"))
+        for name in V01_TEMPLATES:
+            self.assertIn(tdir + name, dropped)
+        self.assertNotIn("lean.json", dropped)
+        kit = kit_names(os.path.join(REPO, "kit", ".kiro", "aidlc-lean", "templates"))
+        self.assertEqual(kit_names(os.path.join(self.dir, tdir)), kit)  # cr.md, decisions.md, not CR.md, ...
+        self.assertEqual(self.read(tdir + "lean.json"), read(os.path.join(REPO, "kit", ".kiro", "aidlc-lean",
+                                                                          "templates", "lean.json")))
+        for name in ("cr.md", "decisions.md"):
+            self.assertEqual(self.read(tdir + name), read(os.path.join(REPO, "kit", ".kiro", "aidlc-lean",
+                                                                       "templates", name)), name)
+        self.sh(["git", "add", "-A"])
+        names = self.tracked()
+        self.assertEqual(sorted(n[len(tdir):] for n in names if n.startswith(tdir)), kit)
+        p = self.reinstall()  # now a v0.3 install: nothing left to remove, drop or keep
+        for word in ("Removed", "Dropped", "Kept"):
+            self.assertNotIn(word, p.stdout)
+
+    def test_a_case_only_variant_of_a_kit_template_is_never_written_through(self):  # QA R2 F01
+        """A later install with the team's CR.md: on a case-insensitive file system it is the same file as the kit's
+        cr.md, so writing cr.md would overwrite it. It is kept and the kit's version goes to cr.md.kit-new."""
+        tdir = ".kiro/aidlc-lean/templates/"
+        ours = "# Change request (our form)\n"
+        os.remove(os.path.join(self.dir, tdir + "cr.md"))
+        self.put(tdir + "CR.md", ours)
+        self.sh(["git", "add", "-A"])
+        self.assertEqual(self.sh(["git", "commit", "-qm", "our CR.md"]).returncode, 0)
+        kit_cr = read(os.path.join(REPO, "kit", ".kiro", "aidlc-lean", "templates", "cr.md"))
+        for _ in range(2):
+            p = self.reinstall()
+            listed = os.listdir(os.path.join(self.dir, tdir))
+            self.assertIn("CR.md", listed)
+            with open(os.path.join(self.dir, tdir, "CR.md"), encoding="utf-8") as f:
+                self.assertEqual(f.read(), ours)  # never overwritten
+            self.assertNotIn("Dropped", p.stdout)
+            if case_insensitive(self.dir):
+                self.assertNotIn("cr.md", listed)
+                self.assertEqual(self.read(tdir + "cr.md.kit-new"), kit_cr)
+                self.assertIn("Kept %sCR.md: " % tdir, p.stdout)
+                self.assertIn("%scr.md.kit-new" % tdir, p.stdout)
+            else:  # two files: the kit's cr.md, and the team's CR.md
+                self.assertIn("cr.md", listed)
+                self.assertEqual(self.read(tdir + "cr.md"), kit_cr)
+                self.assertIn("Kept %sCR.md: the kit does not ship it" % tdir, p.stdout)
 
 
 class V01Config(unittest.TestCase):

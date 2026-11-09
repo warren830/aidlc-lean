@@ -225,7 +225,7 @@ class ChangeRequestScope(Live):
         self.put(self.contract, "openapi: 3.0.0\n")
 
     def test_a_cr_unlocks_only_for_the_requesting_team_and_only_while_open(self):
-        i = self.intent()
+        i = self.ready()  # a contract is code: it waits for the intent's approvals like any code (v0.3)
         self.ok("cr", "new", "refund-reason", "--owner", "payments", "--paths", self.contract)
         self.assertIn("Change requests involving your team: CR-catalog-1 (open, waiting for team payments)", self.status())
         out, _ = self.approve("CR-catalog-1")  # the requesting team cannot approve it: refused, and recorded
@@ -570,7 +570,8 @@ class ApprovalRecords(Live):
         log = self.state(i).split("## Stage log")[1].split(END)[0]
         heads = [re.sub(r" · \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC · by dev@example.com \(team -\)", " · <when, who>", x)
                  for x in re.findall(r"(?m)^### (.+)$", log)]
-        self.assertEqual(heads, ["Requirements Analysis · <when, who> · via CLI",
+        self.assertEqual(heads, ["Ideation · <when, who> · via CLI",  # v0.3: `new` records Ideation as skipped
+                                 "Requirements Analysis · <when, who> · via CLI",
                                  "INCEPTION approval refused (typed deadbeef) · <when, who> · human (prompt)",
                                  "INCEPTION rejected (sha %s) · <when, who> · human (prompt)" % rejected,
                                  "INCEPTION approved (sha %s) · <when, who> · human (prompt)" % h,
@@ -584,7 +585,7 @@ class ApprovalRecords(Live):
         label = {"SESSION_START": "hook (session start)", "HUMAN_TURN": "human (prompt)",
                  "APPROVED": "human (prompt)", "REJECTED": "human (prompt)", "APPROVAL_REFUSED": "human (prompt)",
                  "APPROVAL_REQUESTED": "via CLI", "STAGE_COMPLETED": "via CLI", "STAGE_SKIPPED": "via CLI",
-                 "INTENT_CREATED": "via CLI", "STAGE_STARTED": "via CLI"}
+                 "INTENT_CREATED": "via CLI", "STAGE_STARTED": "via CLI", "PHASE_SKIPPED": "via CLI"}
         rows = [l for l in pack.splitlines() if re.match(r"- \d{4}-\d{2}-\d{2}T", l)]
         self.assertTrue(rows)
         for row in rows:
@@ -662,7 +663,7 @@ class OwnerTeam(Live):
                       "aidlc-state.md (Next):\n", other)
         self.assertNotIn("Build the flag against the stub", other)
         st = self.status()  # the CLI status shows them too, after the progress list
-        self.assertIn("    - [ ] Release\n  From aidlc-state.md (Next, team catalog):\n", st)
+        self.assertIn("    - [ ] Feedback Optimization\n  From aidlc-state.md (Next, team catalog):\n", st)
 
 
 # ---------------------------------------------------------------- 12. `init --team` in a configured clone
