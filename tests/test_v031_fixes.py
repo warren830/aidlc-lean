@@ -262,5 +262,29 @@ class GitignoreBytes(unittest.TestCase):
         self.assertIn("OK ", p.stdout)
 
 
+# ---------------------------------------------------------------- R1-111: a full-width space in an approval line
+class Requested(Fix31):
+    def requested(self):
+        i = self.intent()
+        self.requirements(i)
+        self.ok("stage", "skip", "application-design", "--reason", "one endpoint")
+        return i, self.request_hash("REQUIREMENTS")
+
+
+class FullWidthSpace(Requested):
+    def test_r1_111_a_full_width_space_counts_as_a_space(self):
+        i, h = self.requested()
+        out = self.say("批准\u3000REQUIREMENTS %s" % h)  # the IME's full-width space after 批准
+        self.assertIn("Recorded: REQUIREMENTS approved (sha %s)" % h, out.stdout)
+        self.requirements(i, extra="\nmore\n")
+        h = self.request_hash("REQUIREMENTS")
+        out = self.say("批准 REQUIREMENTS\u3000%s\u3000" % h)
+        self.assertIn("Recorded: REQUIREMENTS approved (sha %s)" % h, out.stdout)
+        self.requirements(i, extra="\nmore again\n")
+        self.request_hash("REQUIREMENTS")
+        out = self.say("驳回\u3000REQUIREMENTS\u3000需要补充验收标准")
+        self.assertIn("Recorded: REQUIREMENTS rejected", out.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

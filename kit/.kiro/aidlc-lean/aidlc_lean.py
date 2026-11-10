@@ -249,6 +249,8 @@ APPROVE_RE = re.compile(  # the whole line must be the approval, so "approve des
 REJECT_RE = re.compile(r"(?im)^[ \t]*(reject|驳回|拒绝)[ \t]*[:：]?[ \t]*(" + KIND_RE + r")\b(.*)$")
 NEAR_APPROVAL_RE = re.compile(r"(?im)^[ \t]*(approve|approved|批准|同意)[ \t]*[:：]?[ \t]*"
                               r"(SPEC|IDEATION|REQUIREMENTS|DESIGN|INCEPTION|PLAN|RELEASE|CR-)")
+# spaces a Chinese input method or a copy from a web page may put in an approval line: read as plain spaces
+WIDE_SPACE_RE = re.compile("[\u3000\u00a0]")
 ALLOW_PROTECTED_RE = re.compile(r"(?im)^[ \t]*(allow test change|允许改测试|允许修改测试|允许修改验收测试)[ \t]*[.!。！]?[ \t]*$")
 KIT_PATHS = (".kiro/hooks/", ".kiro/aidlc-lean/", ".kiro/steering/aidlc-lean.md", ".kiro/skills/aidlc-lean-",
              ".kiro/steering/aidlc-lean-pstack.md", ".kiro/skills/pstack-", ".kiro/agents/lean-")
@@ -2776,7 +2778,8 @@ def hook_prompt(pj, payload):
     if HOST_PROMPT_RE.search(prompt):
         pj.append("HOST_TURN", {"session": session, "sha256": text_sha(prompt)}, intent)
         return 0
-    allow = bool(ALLOW_PROTECTED_RE.search(prompt))
+    lines = WIDE_SPACE_RE.sub(" ", prompt)  # what the approval, rejection and permission lines are read from
+    allow = bool(ALLOW_PROTECTED_RE.search(lines))
     with pj.state_lock():
         turn = pj.local_dict("turn.json")
         turn_no = (turn.get("n") or 0) + 1
@@ -2803,11 +2806,11 @@ def hook_prompt(pj, payload):
         msgs.append("Protected files (%s) may be edited during this turn only; each edit is logged."
                     % ", ".join(pj.cfg.get("protected_paths") or ["none configured"]))
     recorded = False  # an approval, rejection or refused approval went into the ledger: the Stage log shows it
-    for m in APPROVE_RE.finditer(prompt):
+    for m in APPROVE_RE.finditer(lines):
         msg, _ = record_approval(pj, intent, m.group(2), m.group(3), m.group(0).strip(), session)
         msgs.append(msg)
         recorded = True
-    near = None if APPROVE_RE.search(prompt) else NEAR_APPROVAL_RE.search(prompt)
+    near = None if APPROVE_RE.search(lines) else NEAR_APPROVAL_RE.search(lines)
     if near:
         msg = ("That message mentions an approval but is not one: type the approval alone on its own line, "
                "exactly as shown by `request` (e.g. `approve REQUIREMENTS 1a2b3c4d`).")
@@ -2815,7 +2818,7 @@ def hook_prompt(pj, payload):
             msg += (" There is no SPEC any more: the approvals are IDEATION (with Ideation), REQUIREMENTS, DESIGN (or "
                     "both together as INCEPTION), PLAN, RELEASE and CR-<team>-<n>.")
         msgs.append(msg)
-    for m in REJECT_RE.finditer(prompt):
+    for m in REJECT_RE.finditer(lines):
         kind = norm_kind(m.group(2))
         target, err = rejection_target(pj, intent, kind, m.group(3))
         if not target:
