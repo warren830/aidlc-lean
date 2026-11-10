@@ -134,6 +134,26 @@ class TeamNamesChinese(Fix31):
         self.assertIn("is now team 订单 (was 支付)", p.stdout)
 
 
+class TeamNameWithSpace(Fix31):
+    """R2-25: `init --team "Data Platform"` kept the space, and `Owner team:` / `### Next (team ...)` are read up to
+    it, so the owner team's own clone was told another team (Data) releases, and its Next was not injected."""
+    flags = ["--multi-team", "--team", "Data Platform"]
+
+    def test_r2_25_the_owner_clone_releases_and_gets_its_next(self):
+        self.assertIn('"Data_Platform"', self.read(".aidlc-lean/local.json"))
+        self.cfg(checks=["true"])
+        i = self.ready()
+        self.assertIn("Owner team: Data_Platform", self.state(i))
+        self.skip_to_code()
+        self.build_unit(i)
+        self.assertNotIn("release is done by team", self.status())
+        self.put(self.ipath(i, "aidlc-state.md"), self.state(i) + "\n### Next (team Data_Platform)\n- ours\n")
+        for team in (None, "Data Platform"):  # init --team, or AIDLC_LEAN_TEAM with the space
+            out = self.hook("SessionStart", {}, team=team).stdout
+            self.assertIn("Next, team Data_Platform", out, team)
+            self.assertNotIn("release is done by team", self.tool("status", team=team).stdout, team)
+
+
 # ---------------------------------------------------------------- R1-108: fingerprint_exclude adds to the defaults
 class FingerprintExclude(Fix31):
     def test_r1_108_the_teams_paths_add_to_the_record_paths_and_release_passes(self):

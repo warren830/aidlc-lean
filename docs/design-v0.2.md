@@ -295,7 +295,7 @@ A fixes-only release: the round-1 review items R1-106 to R1-120, one false block
 ### 10.1 Review items (round 1)
 
 - R1-106: `lean verify` decodes check output with `errors="replace"`; a byte that is not UTF-8 no longer crashes it, and the check passes or fails by its exit code.
-- R1-107: team names are kept as written (`init --team`, `AIDLC_LEAN_TEAM`), and every comparison goes through `team_key` (letters of any script, digits and `_`; `-` and `.` read as `_`). CR ids, `Owner team` lines and `### Next (team …)` headings accept such names.
+- R1-107: team names are kept as written (`init --team`, `AIDLC_LEAN_TEAM`), and every comparison goes through `team_key` (letters of any script, digits and `_`; `-` and `.` read as `_`). CR ids, `Owner team` lines and `### Next (team …)` headings accept such names. R2-25: spaces are stored as `_` (`Data Platform` is `Data_Platform`, as in 0.3.0), because those two fields are read as one word.
 - R1-108: `fingerprint_exclude` adds to `aidlc-docs/**` and `.kiro/**` (`RECORD_GLOBS`: always records, contracts excepted) instead of replacing them.
 - R1-109: with a git merge conflict in aidlc-state.md, each side gets the regenerated region, and what differs outside it stays one whole conflict hunk with git's markers. Markers that do not pair up leave the page as it is, with a message.
 - R1-110: `lean init` checks and appends `.gitignore` as bytes, as install.sh's check reads it.

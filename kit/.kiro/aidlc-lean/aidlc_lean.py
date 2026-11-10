@@ -621,6 +621,13 @@ def team_key(name):
     return re.sub(r"[^\w]", "_", str(name or "").strip("`* \t"))
 
 
+def team_name(name):
+    """A team name as this clone holds it and writes it into `Owner team:` and `### Next (team ...)`: as written,
+    with spaces read as _ (`Data Platform` is Data_Platform, as 0.3.0 stored it), so those one-word fields hold all
+    of it. team_key gives both spellings the same key."""
+    return re.sub(r"\s+", "_", name.strip()) if name else name
+
+
 def parse_opts(args, allowed):
     """`--name value` or `--name=value` pairs: (dict, None) or (None, error)."""
     out, i = {}, 0
@@ -849,7 +856,7 @@ class Project:
         return read_text(path).strip() or new
 
     def team(self):
-        return os.environ.get("AIDLC_LEAN_TEAM") or self.local_dict("local.json").get("team")
+        return team_name(os.environ.get("AIDLC_LEAN_TEAM") or self.local_dict("local.json").get("team"))
 
     def identity(self):
         _, email = run(["git", "config", "user.email"], self.root)
@@ -3541,7 +3548,7 @@ def cmd_init(pj, args):
         os.makedirs(os.path.join(pj.root, cdir, "changes"), exist_ok=True)
     team = before = None
     if "--team" in args and args.index("--team") + 1 < len(args):
-        team = args[args.index("--team") + 1].strip()  # kept as written; compared through team_key
+        team = team_name(args[args.index("--team") + 1])  # kept as written but for spaces; see team_key
         before = pj.local_dict("local.json").get("team")
         pj.local_put("local.json", {"team": team})
     gi = os.path.join(pj.root, ".gitignore")
