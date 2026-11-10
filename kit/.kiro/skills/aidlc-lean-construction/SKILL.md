@@ -36,8 +36,8 @@ Optional next: `ci-pipeline` (skill `aidlc-lean-operations`) when CI is new or c
 - `blocked (ideation)`, `blocked (requirements)`, `blocked (design)`, `blocked (plan)`: an approval is missing, rejected or stale: finish the page and run the `lean request ...` named, or wait for it.
 - `blocked (verify)`: run `lean verify` and fix what fails.
 - `blocked (protected)`: an acceptance test; do not change it.
-- `blocked (contract)`: another team's contract, with no approved, open CR from your team; use `lean cr new ...` (skill `aidlc-lean-multi-team`).
+- `blocked (contract)`: another team's contract without your team's approved, open CR: `lean cr new ...` (skill `aidlc-lean-multi-team`).
 - `blocked (danger)`: a denied command; if needed, the human runs it.
-- `blocked (records)`: not your files (ledger, local state, config, OWNERS, kit, tool-written files). Read them with a file-read tool, not the shell.
+- `blocked (records)`: not your files (ledger, local state, config, OWNERS, kit, tool-written files). Read them with a file-read tool (in the shell: only cat, head, tail, grep, ls or jq).
 
 Never look for another route around a gate.

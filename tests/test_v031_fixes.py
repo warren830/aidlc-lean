@@ -450,5 +450,86 @@ class ReadmeReleaseRow(Fix31):
         self.assertRegex(row[0], "^- " + pattern + "$")
 
 
+# ---------------------------------------------------------------- false block: read-only shell reads of the records
+READS = ("cat aidlc-docs/lean.json",
+         "cat aidlc-docs/lean.json && python3 .kiro/aidlc-lean/aidlc_lean.py status",  # blocked in the benchmark
+         "ls -R src && cat aidlc-docs/lean.json && cat requirements.txt",
+         "cd /tmp && cat aidlc-docs/lean.json 2>/dev/null; echo ---",
+         "jq .checks aidlc-docs/lean.json",
+         "cat aidlc-docs/lean.json | jq .checks",
+         "tail -5 aidlc-docs/audit/*.jsonl",
+         "ls aidlc-docs/audit/ && wc -l aidlc-docs/audit/*.jsonl",
+         "grep -c STAGE_ aidlc-docs/audit/*.jsonl 2>&1",
+         "head -c 200 .aidlc-lean/turn.json",
+         "git log --oneline -3 && cat aidlc-docs/lean.json",
+         "stat aidlc-docs/lean.json > /dev/null && echo ok")
+WRITES = ("echo '{}' > aidlc-docs/lean.json",
+          "cat /tmp/x > aidlc-docs/lean.json",
+          "cat aidlc-docs/lean.json >> aidlc-docs/lean.json",
+          "cat aidlc-docs/lean.json | tee aidlc-docs/lean.json",
+          "cat aidlc-docs/lean.json && rm aidlc-docs/audit/a.jsonl",
+          "ls aidlc-docs/audit && rm -f .aidlc-lean/turn.json",
+          "cat aidlc-docs/lean.json | xargs rm",
+          "tail -5 aidlc-docs/audit/a.jsonl | python3 -c 'import sys; print(sys.stdin.read())'",
+          "cp /tmp/x aidlc-docs/lean.json",
+          "sed -i '' s/x/y/ aidlc-docs/lean.json",
+          "python3 -c \"open('aidlc-docs/lean.json','w')\"",
+          "cat > aidlc-docs/lean.json <<EOF\n{}\nEOF",
+          "cat aidlc-docs/lean.json $(rm aidlc-docs/audit/a.jsonl)",
+          "cat aidlc-docs/lean.json <> aidlc-docs/lean.json",
+          "git show HEAD:aidlc-docs/lean.json > aidlc-docs/lean.json",
+          "cd aidlc-docs/audit && rm a.jsonl",
+          "'cat' aidlc-docs/lean.json > aidlc-docs/audit/a.jsonl",
+          "cat aidlc-docs/lean.json && python3 .kiro/aidlc-lean/aidlc_lean.py cr new x --owner payments --paths "
+          "aidlc-docs/lean.json",
+          "cat aidlc-docs/lean.json && python3 .kiro/aidlc-lean/aidlc_lean.py hook PreToolUse")
+# still blocked: other programs that read (the file-read tool is the way for them)
+OTHER_READS = ("sed -n 1,20p aidlc-docs/lean.json", "awk 'NR<5' aidlc-docs/lean.json",
+               "find aidlc-docs/audit -name '*.jsonl'", "python3 -m json.tool aidlc-docs/lean.json")
+
+
+class ShellReads(Fix31):
+    def test_reading_the_records_passes_and_writing_them_is_still_blocked(self):
+        self.intent()
+        for c in READS:
+            r = self.bash(c)
+            self.assertEqual(r.returncode, 0, (c, r.stderr))
+        self.assertEqual(self.events("BLOCKED"), [])
+        for c in WRITES + OTHER_READS:
+            r = self.bash(c)
+            self.assertEqual(r.returncode, 2, c)
+            self.assertIn("blocked (records)", r.stderr, c)
+        self.assertEqual(len(self.events("BLOCKED")), len(WRITES + OTHER_READS))
+
+
+class ShellReadsRegulated(ShellReads):
+    flags = ["--regulated"]
+
+
+def kit_text(*parts):
+    with open(os.path.join(REPO, *parts), encoding="utf-8") as f:
+        return f.read()
+
+
+class ShellReadTexts(unittest.TestCase):
+    def test_the_texts_say_which_shell_reads_pass_and_keep_the_file_read_tool_for_the_rest(self):
+        construction = kit_text("kit", ".kiro", "skills", "aidlc-lean-construction", "SKILL.md")
+        self.assertIn("Read them with a file-read tool (in the shell: only cat, head, tail, grep, ls or jq).",
+                      construction)
+        self.assertNotIn("Reading them is fine", construction)
+        hook = json.loads(kit_text("kit", ".kiro", "hooks", "aidlc-lean-guard.json"))["hooks"][0]["description"]
+        self.assertIn("A shell line that only reads the kit's records with cat, head, tail, grep, jq, ls and the like "
+                      "passes; other shell commands that touch the kit's records (sed, awk, find, python, any write) "
+                      "are blocked: read those with a file-read tool.", hook)
+        readme = kit_text("README.md")
+        limits = readme.split("## 已知限制")[1].split("\n## ")[0]
+        self.assertNotIn("`cat aidlc-docs/lean.json`、`ls aidlc-docs/audit/`，11-08 实测碰到过）也会被拦", limits)
+        self.assertIn("用 `sed`、`awk`、`find`、`python3` 这类程序读记录文件", limits)
+        self.assertIn("改用读文件工具或 `lean status`", limits)
+        gates = readme.split("## hook 会拦的事")[1].split("\n## ")[0]
+        self.assertIn("只读的 shell 命令读审计日志、本机状态和 `aidlc-docs/lean.json`，不拦", gates)
+        self.assertIn("照旧拦：改用读文件工具或 `lean status`", gates)
+
+
 if __name__ == "__main__":
     unittest.main()

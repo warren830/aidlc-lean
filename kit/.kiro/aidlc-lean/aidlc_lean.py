@@ -3022,7 +3022,7 @@ def guard_shell(pj, intent, cmd):
     # OWNERS as commands name it: under contracts_dir as configured, and under its resolved target
     owners_files = sorted({pj.cfg["contracts_dir"] + "/OWNERS", pj.contracts_real + "/OWNERS"})
     scan = without_note_values(cmd)  # for the records and mutation checks below; the rest look at cmd
-    if re.search(r"aidlc_lean\.py\S*\s+hook\b", scan) or touches_records(scan):
+    if re.search(r"aidlc_lean\.py\S*\s+hook\b", scan) or (touches_records(scan) and not read_only_line(scan)):
         return block(pj, "records", "commands may not touch %s/audit/, .aidlc-lean/, %s/lean.json or call the hook "
                      "entry point (staging and committing them with plain `git add`/`git commit` is fine)."
                      % (DOCS, DOCS), intent, d)
@@ -3066,6 +3066,46 @@ SAFE_GIT_RE = re.compile(r"^\s*git\s+(add|commit|status|diff|log|show|ls-files|b
 # the files only the tool writes, as they appear in a command (any intent folder)
 TOOL_RECORDS_SHELL = (r"aidlc-docs/(?:[^/\s'\"|;&<>]+/)?(?:audit\.md|construction/build-and-test"
                       r"(?:/build-and-test-summary\.md|/evidence\b|/?(?=[\s'\"]|$)))(?![\w.-])")
+
+
+# v0.3.1: a command line that only reads may name the record paths (`cat aidlc-docs/lean.json`, `tail` of a ledger):
+# every simple command on it is one of these programs with no redirection except from a file or to /dev/null, a git
+# inspect command, or this tool's own CLI naming no record path itself. Anything else on such a line, a pipe into
+# another program included, is checked as before; so is a line read_only_line cannot read exactly.
+READ_ONLY_PROGRAMS = frozenset(("cat", "head", "tail", "wc", "ls", "grep", "egrep", "fgrep", "jq", "stat", "diff",
+                                "cmp", "nl", "md5", "md5sum", "shasum", "sha256sum", "echo", "printf", "pwd", "cd",
+                                "true"))
+READ_ONLY_GIT = ("status", "log", "show", "diff", "ls-files", "blame")
+
+
+def read_only_line(cmd):
+    """True when every simple command of the line only reads (READ_ONLY_PROGRAMS): then naming a record path in it
+    is a read, not a change."""
+    cmds = shell_commands(cmd)
+    if not cmds:
+        return False
+    for toks in cmds:
+        words = [cmd[s:e] for s, e, w in toks if w]
+        if not toks[0][2] or cmd[toks[0][0]] in "'\"\\":  # starts with a redirection, or a quoted program name
+            return False
+        name = posixpath.basename(words[0])
+        if name == "git":
+            if len(words) < 2 or words[1] not in READ_ONLY_GIT or any(w.startswith("--output") for w in words):
+                return False
+        elif name in ("python3", "python") and len(words) > 2 and words[1] in TOOL_CALL[1]:
+            if words[2] == "hook" or RECORDS_RE.search(cmd[toks[0][0]:toks[-1][1]]):
+                return False  # this tool's own CLI, as long as it names no record path itself
+        elif name not in READ_ONLY_PROGRAMS:
+            return False
+        for k, (s, e, is_word) in enumerate(toks):
+            if is_word:
+                continue
+            op, nxt = cmd[s:e], toks[k + 1] if k + 1 < len(toks) else None
+            target = cmd[nxt[0]:nxt[1]] if nxt and nxt[2] else None
+            if not target or not (op == "<" or (op in (">", ">>", "&>", "&>>", ">|", ">&") and target == "/dev/null")
+                                  or (op == ">&" and target.isdigit())):
+                return False
+    return True
 
 
 def touches_records(cmd):

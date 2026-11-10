@@ -335,9 +335,10 @@ hook 是 Kiro 在会话开始、你发消息、AI 调用工具前自动跑的脚
 | 配了 checks，但没有对当前代码通过的 verify，还要提交 | 拦住 | verify |
 | 受监管模式：没配 checks 就提交 | 拦住 | verify |
 | 禁止名单里的命令：默认只有几条（`git push --force`、`rm -rf /`、`terraform apply`、`kubectl apply`、`kubectl delete`、删表等），团队在 lean.json 的 `deny_commands` 里加 | 拦住，需要的话由人自己执行。名单很短，管不住所有部署："AI 不部署"靠的是规则和团队的权限（见 1a） | danger |
-| AI 改审计日志、本机状态、`aidlc-docs/lean.json`、契约 OWNERS、`.kiro` 里的 kit，或者改工具写的文件（build-and-test-summary.md、证据文件、audit.md） | 拦住 | records |
+| AI 改审计日志、本机状态、`aidlc-docs/lean.json`、契约 OWNERS、`.kiro` 里的 kit，或者改工具写的文件（build-and-test-summary.md、证据文件、audit.md）。只读的不拦：读文件工具，和只做读的 shell 命令（见表下第一条） | 拦住 | records |
 | 多团队：改别的团队的契约，但没有对方批过、还没关闭、由你们团队提的 CR | 拦住 | contract |
 
+- 只读的 shell 命令读审计日志、本机状态和 `aidlc-docs/lean.json`，不拦（v0.3.1 修的误拦：2026-11-09 的对比测试里，几乎每次都有一次 `cat aidlc-docs/lean.json` 被拦，AI 也就看不到审批人名单）。条件是这一行里每一段命令都只是读：`cat`、`head`、`tail`、`wc`、`ls`、`grep`、`jq`、`stat`、`diff`、`echo`、`cd` 等，除了从文件读入、`2>/dev/null` 和 `2>&1` 没有重定向；或者是 `git status/log/show/diff` 这类只看不改的 git 命令；或者是 `lean` 本身（参数里不写记录的路径）。用别的程序读（`sed`、`awk`、`find`、`python3`），接到别的程序上（`| python3 -c`、`| xargs`、`| tee`），往这些文件里写，或者这一行带 `$(...)`、here-document，照旧拦：改用读文件工具或 `lean status`。
 - 普通模式下，批过的页面又改了，写代码不拦，`lean status` 会标成 stale（过期）；但 `lean release` 要求审批都对得上现在的文件。
 - 普通模式下，当前 intent 发布以后，就当没有当前 intent：写代码不拦，小改动照常做；新的功能和后续修改用 `lean new` 开新 intent。已经发布的 intent 只有运维阶段和 ci-pipeline 还接受阶段命令，别的阶段命令都拒绝。
 - 写 `aidlc-docs/` 里的页面、`*.md` 和 `docs/**` 不受审批限制。契约文件除外（`contracts_dir` 下的文件，默认 `aidlc-docs/contracts/`，不含 OWNERS 和 `changes/` 里的 CR）：它们算代码，和代码一样过上面这些关卡（用了构想先等 IDEATION，再等需求和设计；受监管模式下要有 intent 和所属单元的 PLAN）。多团队时，改别的团队的契约还要先有对方批过的 CR；改自己团队的契约只是不用 CR。
@@ -489,7 +490,7 @@ python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目
 - **单元别叫 `swarm`**：pstack 的并行子代理把报告写在 `construction/swarm/` 下，会和这个单元的目录混在一起。
 - **会误拦的情况**：
   - Kiro 的 `code` 工具（查符号这类读操作）和写到仓库外面的文件（比如 `/tmp` 里），在需求和设计批准前可能被当成写代码拦下；
-  - 用 shell 读记录文件或列记录目录（比如 `cat aidlc-docs/lean.json`、`ls aidlc-docs/audit/`，11-08 实测碰到过）也会被拦，改用读文件工具或 `lean status`；
+  - 用 `sed`、`awk`、`find`、`python3` 这类程序读记录文件，或者把读到的内容接给别的程序（比如 `| python3 -c`），还是会被拦，改用读文件工具或 `lean status`。`cat`、`head`、`tail`、`grep`、`jq`、`ls` 这类只读的命令从 v0.3.1 起不拦（见"hook 会拦的事"）；
   - `aidlc-docs/lean.json` 写坏了（不是合法 JSON）时，所有工具调用都会被拦，而且记不进日志。
 - **只在 Kiro CLI 的 v3 引擎上测过**（用 `kiro-cli --v3` 启动）。v2 引擎用的是另一套 hook 配置（agent JSON），这里没有适配。
 - **Windows 还不支持**：那里的关卡可能悄悄失效。请用 macOS 或 Linux，或者在 WSL 里用 Linux 版的 Kiro。
