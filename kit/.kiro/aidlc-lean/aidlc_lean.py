@@ -3035,7 +3035,7 @@ def guard_shell(pj, intent, cmd):
                 return block(pj, "verify", "regulated mode needs checks in %s/lean.json before commits." % DOCS,
                              intent, d)
             return 0
-        if only_record_changes(pj):
+        if only_record_changes(pj, commit_paths(pj, scan)):
             return 0
         lv = pj.last_verify()
         if not lv or not lv["data"].get("ok") or lv["data"].get("fingerprint") != pj.fingerprint():
@@ -3098,6 +3098,70 @@ def git_calls(cmd, depth=0):
                     return None
                 out += inner
     return out
+
+
+# `git commit` options that take the next word as their value (`-m msg`; `-m"msg"` and `--message=msg` hold it)
+COMMIT_VALUE_SHORT = "mFCct"
+COMMIT_VALUE_LONG = ("--message", "--file", "--reuse-message", "--reedit-message", "--template", "--author", "--date",
+                     "--fixup", "--squash", "--cleanup", "--trailer")
+
+
+def commit_paths(pj, cmd):
+    """The paths (project-relative) a commit command line commits: what is staged now, plus the changes under
+    the paths each `git add <paths>` on the line names. None when that cannot be told exactly; the commit gate then
+    looks at the whole working tree. That is the case for a line shell_commands cannot read, a command on it other
+    than git and the read-only programs (`cd` included), git's global options (-C, --git-dir), `git add` without
+    paths or with options (-A, -u, ...), `git commit` with -a, -i, -o, -p or paths, and other git commands that
+    change the index or the files (rm, mv, stash, reset, ...)."""
+    cmds = shell_commands(cmd)
+    if cmds is None:
+        return None
+    specs = []
+    for toks in cmds:
+        words = [shell_word(cmd[s:e]) for s, e, is_word in toks if is_word]
+        if not words or posixpath.basename(words[0]) in ("echo", "true", "printf", "pwd"):
+            continue
+        if posixpath.basename(words[0]) != "git" or len(words) < 2 or words[1].startswith("-"):
+            return None
+        sub, args = words[1], words[2:]
+        if sub in ("status", "diff", "log", "show", "ls-files", "blame"):
+            continue
+        if sub == "add":
+            opts = [a for a in args if a.startswith("-")]
+            if any(a not in ("--", "-v", "--verbose") for a in opts) or len(opts) == len(args):
+                return None
+            specs += [a for a in args if not a.startswith("-")]
+            continue
+        if sub != "commit":
+            return None
+        k = 0
+        while k < len(args):
+            a = args[k]
+            if a == "--":
+                if args[k + 1:]:
+                    return None  # paths: the commit holds their working-tree content
+                break
+            if a.startswith("--"):
+                name = a.split("=", 1)[0]
+                if name in ("--all", "--include", "--only", "--interactive", "--patch", "--pathspec-from-file"):
+                    return None
+                if "=" not in a and name in COMMIT_VALUE_LONG:
+                    k += 1
+            elif a.startswith("-") and len(a) > 1:
+                for n, ch in enumerate(a[1:]):
+                    if ch in "aiop":
+                        return None
+                    if ch in COMMIT_VALUE_SHORT:
+                        k += 1 if n == len(a) - 2 else 0  # the value is the next word, or the rest of this one
+                        break
+            else:
+                return None  # a path
+            k += 1
+    staged = git_paths(pj, ["diff", "--cached", "--name-only", "-z", "--no-renames"])
+    added = changed_paths(pj, every_untracked=True, specs=specs) if specs else []
+    if staged is None or added is None:
+        return None
+    return sorted(set(staged) | set(added))
 
 
 def is_commit_line(cmd):
@@ -3209,11 +3273,13 @@ def mutates_re(cmd, p):
         r"|\bgit\s+(checkout|restore|rm|mv|apply)\b[^|;&]*%s|\bpython3?\b[^|;&]*%s[^|;&]*open\()" % (p, p, p, p, p), cmd))
 
 
-def changed_paths(pj, every_untracked=False):
+def changed_paths(pj, every_untracked=False, specs=None):
     """Paths in `git status --porcelain -z`, relative to the project root, or None if git fails.
     Output is parsed unstripped (the first entry may start with a space, e.g. ' M path'), and a rename or
-    copy lists both its new and its old path. every_untracked: each untracked file, not just its folder."""
-    cmd = ["git", "status", "--porcelain", "-z"] + (["--untracked-files=all"] if every_untracked else [])
+    copy lists both its new and its old path. every_untracked: each untracked file, not just its folder. specs:
+    only the changes under these paths (as a command in the project folder names them)."""
+    cmd = ["git", "status", "--porcelain", "-z"] + (["--untracked-files=all"] if every_untracked else []) + (
+        ["--"] + list(specs) if specs else [])
     try:
         p = subprocess.run(cmd, cwd=pj.root, capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
@@ -3231,16 +3297,34 @@ def changed_paths(pj, every_untracked=False):
             if i < len(fields) and fields[i]:
                 paths.append(os.fsdecode(fields[i]))
             i += 1
-    # porcelain paths are relative to the git top level; the project may be a subfolder of it (monorepo).
-    # Paths outside the project never count as records.
+    return project_relative(pj, paths)
+
+
+def project_relative(pj, paths):
+    """git's paths are relative to the git top level; the project may be a subfolder of it (monorepo). Paths
+    outside the project never count as records."""
     _, prefix = run(["git", "rev-parse", "--show-prefix"], pj.root)
     if prefix:
         paths = [x[len(prefix):] if x.startswith(prefix) else "../" + x for x in paths]
     return paths
 
 
-def only_record_changes(pj):
-    paths = changed_paths(pj)
+def git_paths(pj, args):
+    """The NUL-separated paths a git command prints (e.g. `diff --cached --name-only -z`), project-relative, or
+    None if git fails."""
+    try:
+        p = subprocess.run(["git"] + args, cwd=pj.root, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    return project_relative(pj, [os.fsdecode(f) for f in p.stdout.split(b"\0") if f])
+
+
+def only_record_changes(pj, paths=None):
+    """Does the commit hold records only (README: such commits need no verify)? paths: what it commits
+    (commit_paths); None: the whole working tree counts."""
+    paths = changed_paths(pj) if paths is None else paths
     return bool(paths) and all(pj.is_record_path(p) for p in paths)
 
 

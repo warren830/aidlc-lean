@@ -18,11 +18,14 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_aidlc_lean import DOCS, REPO, SUMMARY, TOOL  # noqa: E402
-from test_v02_live_fixes import BEGIN, END, Live  # noqa: E402
+from test_v02_live_fixes import BEGIN, END, LEAN, Live  # noqa: E402
 
 
 class Fix31(Live):
-    pass
+    def progress(self, intent):
+        """The Stage progress lines of aidlc-state.md (after `status` refreshed it)."""
+        self.ok("status")
+        return self.state(intent).split("## Stage progress\n")[1].split("\n\n## Stage log")[0].splitlines()
 
 
 # ---------------------------------------------------------------- R1-106: check output that is not UTF-8
@@ -321,6 +324,39 @@ class CommitWord(Fix31):
             r = self.bash(c)
             self.assertEqual(r.returncode, 2, c)
             self.assertIn("blocked (verify)", r.stderr, c)
+
+
+# ---------------------------------------------------------------- R1-114: a commit of records only needs no verify
+class RecordsOnlyCommit(Fix31):
+    def blocked(self, c):
+        r = self.bash(c)
+        self.assertEqual(r.returncode, 2, c)
+        self.assertIn("blocked (verify)", r.stderr, c)
+
+    def test_r1_114_what_the_commit_holds_decides_not_the_whole_working_tree(self):
+        self.cfg(checks=["true"])
+        self.put("src/app.py", "x = 1\n")
+        self.commit_all("init")
+        i = self.intent()  # new records in aidlc-docs/
+        self.put("src/app.py", "x = 2  # step 2 of the plan, not verified yet\n")  # not staged
+        self.assertEqual(self.bash("git add aidlc-docs/ && git commit -m 'session notes'").returncode, 0)
+        self.assertEqual(self.bash("git add %s %s && git commit -m notes" % (
+            self.ipath(i, "aidlc-state.md"), self.ipath(i, "decisions.md"))).returncode, 0)
+        self.sh(["git", "add", "aidlc-docs/"])
+        self.assertEqual(self.bash("git commit -m 'session notes'").returncode, 0)  # only records are staged
+        self.assertEqual(self.bash("git commit -qm notes -- ").returncode, 0)
+        for c in ("git commit -am notes", "git add -A && git commit -m all", "git add . && git commit -m all",
+                  "git add src/app.py && git commit -m x", "git add -u && git commit -m x",
+                  "git commit -m notes src/app.py", 'git commit -m "$(cat msg.txt)"',
+                  "cd src && git add app.py && git commit -m x"):
+            self.blocked(c)
+        self.put("aidlc-docs/contracts/api.yaml", "openapi: 3.0.0\n")  # a contract is code
+        self.blocked("git add aidlc-docs/ && git commit -m 'session notes'")
+        os.remove(os.path.join(self.dir, "aidlc-docs", "contracts", "api.yaml"))
+        self.sh(["git", "add", "src/app.py"])  # product code staged: verify first
+        self.blocked("git commit -m x")
+        self.ok("verify")
+        self.assertEqual(self.bash("git commit -m x").returncode, 0)
 
 
 if __name__ == "__main__":
