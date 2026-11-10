@@ -735,5 +735,17 @@ class EditedSinceTexts(unittest.TestCase):
             self.assertIn(line, kit_text("kit", ".kiro", "skills", skill, "SKILL.md"), skill)
 
 
+# ---------------------------------------------------------------- live-6: commitments are not invented
+class CommitmentTexts(unittest.TestCase):
+    def test_live_6_the_brief_template_and_the_ideation_skill_never_guess_a_commitment(self):
+        brief = kit_text("kit", ".kiro", "aidlc-lean", "templates", "initiative-brief.md")
+        self.assertIn('"yes" only when the PM (or the person who decides) said so; otherwise write "not confirmed (ask '
+                      '<who>)", never a guess.', brief)
+        ideation = kit_text("kit", ".kiro", "skills", "aidlc-lean-ideation", "SKILL.md")
+        self.assertIn("stakeholders, dates or commitments (budget, people): they come from the PM or a named source",
+                      ideation)
+        self.assertIn('an unconfirmed commitment is "not confirmed (ask <who>)"', ideation)
+
+
 if __name__ == "__main__":
     unittest.main()

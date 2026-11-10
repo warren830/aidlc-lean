@@ -28,14 +28,14 @@ Once Ideation is used, the "always" stages cannot be skipped; an earlier skip no
 
 ## How to run it
 - **One question batch** at Intent Capture: numbered, each with a recommended answer and a "not known yet" choice. Later, only what blocks you.
-- **Never invent** customers, metrics, competitors, prices, stakeholders or dates: they come from the PM or a named source. A guess is an assumption (A-1…) for the PM to confirm; an unknown, an open question naming who answers.
-- **Short pages**: tables and lists; the brief summarises the others, never copies them.
+- **Never invent** customers, metrics, competitors, prices, stakeholders, dates or commitments (budget, people): they come from the PM or a named source. A guess is an assumption (A-1…) for the PM to confirm; an unknown, an open question naming who answers; an unconfirmed commitment is "not confirmed (ask <who>)".
+- **Short pages**: tables and lists; the brief summarises, never copies.
 - Log decisions in the brief's decision log (build-shaping ones also in decisions.md). Before every stop, update aidlc-state.md's Session notes.
 
 ## The IDEATION approval
 1. Once all three "always" stages have their `stage done` (pages alone do not count), `lean request IDEATION`. Its line (`approve IDEATION <hash>`) is bound to these pages. Record a stage marked `(edited since)` again (`lean stage done`, noting what changed) before the request. Restarting one of them holds the request back until its next `stage done`.
 2. Show the PM that line. They (or whoever lean.json's `approvers` names) read the brief and, if they agree, type it themselves; never approve for them. Otherwise they type `reject IDEATION <reason>`: revise, then request again.
-3. After the request, Next offers only the optional stages already started (finish them): a new, edited or removed page voids the request or the approval; request again (release, and regulated mode, need it current).
+3. After the request, Next offers only the optional stages already started: a new, edited or removed page voids the request or the approval; request again.
 
 Until IDEATION is approved, requirements cannot be approved: no code, no release.
 
