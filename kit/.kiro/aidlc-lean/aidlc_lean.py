@@ -127,14 +127,14 @@ DEFAULT_CONFIG = {
     "contracts_dir": DOCS + "/contracts",
     "teams": [],
     "approvers": {},
-    "fingerprint_exclude": [],  # the team's own; RECORD_GLOBS always count too
+    "fingerprint_exclude": [DOCS + "/**", ".kiro/**"],  # the defaults (brain-kit reads them); RECORD_GLOBS always count
     "state_reminder_after_writes": 25,
     "resume_gap_hours": 4,
 }
 
 # Process records, never product code (except contracts_dir): the ledger is under aidlc-docs/, so a fingerprint
-# that counted it would change with every verify. lean.json's fingerprint_exclude adds to these, it does not replace
-# them.
+# that counted it would change with every verify. They are also DEFAULT_CONFIG's fingerprint_exclude; a list in
+# lean.json adds to them, it does not replace them.
 RECORD_GLOBS = (DOCS + "/**", ".kiro/**")
 
 # ---------------------------------------------------------------- the AI-DLC stages

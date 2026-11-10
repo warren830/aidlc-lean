@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_aidlc_lean import DOCS, REPO, SUMMARY, TOOL  # noqa: E402
-from test_v02_live_fixes import BEGIN, END, LEAN, Live  # noqa: E402
+from test_v02_live_fixes import BEGIN, END, LEAN, Live, load_kit  # noqa: E402
 
 
 class Fix31(Live):
@@ -153,6 +153,13 @@ class FingerprintExclude(Fix31):
         r = self.bash("git commit -m app")
         self.assertEqual(r.returncode, 2)
         self.assertIn("blocked (verify)", r.stderr)
+
+
+class FingerprintExcludeDefaults(unittest.TestCase):
+    def test_r1_108_the_default_list_is_still_the_record_globs(self):
+        core = load_kit()  # brain-kit reads DEFAULT_CONFIG's fingerprint_exclude as Lean's defaults
+        self.assertEqual(core.DEFAULT_CONFIG["fingerprint_exclude"], ["aidlc-docs/**", ".kiro/**"])
+        self.assertEqual(list(core.RECORD_GLOBS), ["aidlc-docs/**", ".kiro/**"])
 
 
 # ---------------------------------------------------------------- R1-109: a merge conflict across the region's end
