@@ -531,5 +531,134 @@ class ShellReadTexts(unittest.TestCase):
         self.assertIn("照旧拦：改用读文件工具或 `lean status`", gates)
 
 
+# ---------------------------------------------------------------- live-1: a stage recorded after `lean release`
+RELEASE_DOC = "operations/release.md"
+
+
+class BuildToRelease(Fix31):
+    def build(self):
+        """An intent built and verified in standard mode: what is left is the release."""
+        self.cfg(checks=["true"])
+        i = self.ready()
+        self.skip_to_code()
+        self.build_unit(i)
+        return i
+
+
+class RegulatedBuild:
+    """Mixin: the same, in regulated mode (hash-bound approvals, the unit's PLAN approved)."""
+    flags = ["--regulated"]
+
+    def build(self):
+        self.cfg(checks=["true"])
+        i = self.intent()
+        self.requirements(i, "small")
+        for sid in ("application-design", "reverse-engineering", "user-stories", "units"):
+            self.ok("stage", "skip", sid, "--reason", "not needed")
+        self.approve("REQUIREMENTS")
+        self.skip_to_code("app")
+        self.ok("stage", "start", "code-generation", "--unit", "app")
+        self.put(self.ipath(i, "construction/plans/app-code-generation-plan.md"), "# Plan\n\n- [x] 1. skeleton\n")
+        self.approve("PLAN", "--unit", "app")
+        self.ok("verify")
+        self.ok("stage", "done", "code-generation", "--unit", "app", "--note", "built")
+        return i
+
+
+class StageRecordsAfterRelease(BuildToRelease):
+    """A stage or phase record made after `lean release` and before the RELEASE approval was missing from the
+    approved release.md. It now counts like a missing approval: `lean release` again."""
+
+    def released_md(self):
+        i = self.build()
+        self.commit_all()
+        self.ok("release")
+        return i
+
+    def test_live_1_a_phase_skip_after_release_needs_release_again(self):
+        i = self.released_md()
+        self.ok("stage", "skip", "operations", "--reason", "the platform team ships it")
+        p = self.tool("request", "RELEASE")
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("operations/release.md was written before Operations skipped: its Stages section is out of date "
+                      "(run %srelease` again)" % LEAN, p.stdout)
+        self.assertRegex("\n".join(self.progress(i)),
+                         r"- \[-\] Release — release.md \(written \d{4}-\d{2}-\d{2}\) is older than Operations "
+                         r"skipped: run `release` again")
+        self.assertIn("%srelease` again (its Stages section is older than Operations skipped)" % LEAN, self.status())
+        self.ok("release")
+        self.assertIn("- [S] Operations — skipped: the platform team ships it", self.read(self.ipath(i, RELEASE_DOC)))
+        self.approve("RELEASE")
+        self.assertIn("- [x] Release — released", "\n".join(self.progress(i)))
+
+    def test_live_1_the_approval_line_is_refused_for_a_stage_recorded_after_the_request(self):
+        self.released_md()
+        h = self.request_hash("RELEASE")
+        self.ok("stage", "skip", "ci-pipeline", "--reason", "no CI here")
+        out = self.say("approve RELEASE %s" % h)
+        self.assertIn("NOT recorded", out.stdout + out.stderr)
+        ref = self.events("APPROVAL_REFUSED")[-1]["data"]
+        self.assertEqual(ref["check"], "release")
+        self.assertIn("written before CI Pipeline skipped", ref["reason"])
+        self.assertEqual([e for e in self.events("APPROVED") if e["data"]["kind"] == "RELEASE"], [])
+        self.assertNotIn("[A] Release", self.status())
+
+    def test_live_1_after_the_approval_operations_records_keep_it(self):
+        i = self.released_md()
+        self.approve("RELEASE")
+        self.ok("stage", "skip", "operations", "--reason", "nothing to deploy")
+        self.ok("stage", "start", "deployment-execution")
+        lines = "\n".join(self.progress(i))
+        self.assertIn("- [x] Release — released", lines)
+        self.assertIn("- [-] Deployment Execution — in progress", lines)
+
+    def test_live_1_records_before_release_are_part_of_it(self):
+        i = self.build()
+        self.ok("stage", "skip", "ci-pipeline", "--reason", "the platform team ships it")
+        self.ok("stage", "skip", "operations", "--reason", "the platform team ships it")
+        self.commit_all()
+        self.ok("release")
+        self.assertEqual(self.tool("request", "RELEASE").returncode, 0)
+        seen = [e for e in self.events("STAGE_STARTED") if e["data"]["stage"] == "release"][-1]["data"]
+        hashes = {e["hash"][:16] for e in self.events() if e.get("intent") == i and (
+            e["event"] == "PHASE_SKIPPED" or (e["event"] in ("STAGE_STARTED", "STAGE_COMPLETED", "STAGE_SKIPPED")
+                                              and e["data"].get("stage") not in ("release", "build-and-test")))}
+        self.assertEqual(set(seen["stage_records"]), hashes)
+        self.ok("verify")  # a verify on the same code records Build and Test again: it does not void release.md
+        self.assertEqual(self.tool("request", "RELEASE").returncode, 0)
+
+    def test_live_1_a_release_md_from_before_0_3_1_is_not_checked(self):
+        i = self.released_md()
+        path = os.path.join(self.dir, DOCS, "audit")
+        for name in os.listdir(path):  # the release run as 0.3.0 logged it: no stage_records
+            full = os.path.join(path, name)
+            with open(full, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            with open(full, "w", encoding="utf-8") as f:
+                for line in lines:
+                    if '"stage_records"' in line:
+                        e = json.loads(line)
+                        del e["data"]["stage_records"]
+                        line = json.dumps(e, ensure_ascii=False)
+                    f.write(line + "\n")
+        self.ok("stage", "skip", "operations", "--reason", "later")
+        self.assertEqual(self.tool("request", "RELEASE").returncode, 0)
+        self.assertIn("- [A] Release — waiting for approval", "\n".join(self.progress(i)))
+
+
+class StageRecordsAfterReleaseRegulated(RegulatedBuild, StageRecordsAfterRelease):
+    pass
+
+
+class StageRecordsAfterReleaseTexts(unittest.TestCase):
+    def test_live_1_the_steering_and_the_release_skill_say_when_stages_are_recorded(self):
+        steering = kit_text("kit", ".kiro", "steering", "aidlc-lean.md")
+        self.assertIn("**Operations** (optional; record or skip before `lean release`, or after the RELEASE approval;",
+                      steering)
+        release = kit_text("kit", ".kiro", "skills", "aidlc-lean-release", "SKILL.md")
+        self.assertIn("after any code change, or a stage recorded or skipped since, run `lean verify` and `lean release` "
+                      "again", release)
+
+
 if __name__ == "__main__":
     unittest.main()

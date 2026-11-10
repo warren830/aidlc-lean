@@ -11,7 +11,7 @@ This repo uses AI-DLC Lean: AI-DLC's phases, stages, file names and traceability
 
 - `lean status`: where the intent stands, what comes next; run it when unsure.
 - `lean new <slug> [--title "<title>"] [--ideation]`: start and activate an intent (`aidlc-docs/<yymmdd>-<slug>/`).
-- `lean use <intent>`: switch the active intent (logged).
+- `lean use <intent>`: switch the active intent.
 - `lean stage start <id> [--unit U]`: mark a stage in progress and create its page (never copy templates yourself).
 - `lean stage done <id> [--unit U] --note "<inputs used, outputs, key decisions>"`: record the stage; refused while its page is missing or still the template.
 - `lean stage skip <id> [--unit U] --reason "<why>"`: skip a stage; `ideation` or `operations` skips that phase's unrecorded stages.
@@ -55,7 +55,7 @@ Pass `--unit <unit>` to stages 6–9 (`app` unless `unit-of-work.md` lists units
 
 12. `release`: review in a new chat or by a subagent that did not write the code, `lean release`, RELEASE approval. Always.
 
-**Operations** (optional, before or after RELEASE; skill `aidlc-lean-operations`): `deployment-pipeline`, `environment-provisioning`, `deployment-execution`, `observability-setup`, `incident-response`, `performance-validation`, `feedback-optimization`. Write documents and config; never deploy (the team's CI/CD does).
+**Operations** (optional; record or skip before `lean release`, or after the RELEASE approval; skill `aidlc-lean-operations`): `deployment-pipeline`, `environment-provisioning`, `deployment-execution`, `observability-setup`, `incident-response`, `performance-validation`, `feedback-optimization`. Write documents and config; never deploy.
 
 Go in order; skip a conditional stage that does not apply or adds nothing (`lean stage skip`, with a real reason).
 

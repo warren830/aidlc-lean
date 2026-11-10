@@ -106,7 +106,7 @@ v0.3 加回了 AI-DLC 的两段，都是**可选的**，默认不开：
 
 - **AI 不部署**：AI 写文档和配置，部署、建环境、回滚、对共享环境压测都由团队的 CI/CD（比如 GitLab 再到 Argo CD）或人来做。这是常驻说明和技能卡写给 AI 的规则，工具不能保证。禁止名单（关卡 `danger`）只是一份很短的默认名单，有 `terraform apply`、`kubectl apply` 等几条，挡不住所有部署命令；团队自己用的部署命令，由人加进 `aidlc-docs/lean.json` 的 `deny_commands`。真正管住部署的是团队的流水线和权限，比如 AI 跑命令用的账号没有部署权限（和上面"护栏，不是安全边界"一样）。部署记录只在真部署过以后，按流水线和看着部署的人给的事实填。
 - **配置就是代码**：CI 文件、K8s 清单、Helm 值、IaC、写成代码的告警和看板，都算产品文件：写代码的关卡照样管，改完要重新 `lean verify`。`aidlc-docs/` 里的页面只是记录。
-- **发布前后都能写**：任何模式都可选。发布前写计划类的页面（CI、部署流水线、环境、可观测性、事故响应、压测计划），配置提交并 verify 过，再 `lean release`。RELEASE 的哈希只管 release.md：里面有提交、代码指纹、verify 结果、审批表、Open items，和 `lean release` 那一刻的阶段进度（每个运维阶段当时是做完、跳过还是没开始）；运维页面本身的内容不在里面。所以批完以后再改或新加运维页面，RELEASE 不会作废，这些页面只是记录。运维的配置文件算在代码指纹里：`lean release` 之后改了，要重新 verify、`lean release`、批。RELEASE 也不等运维页面。发布以后，只有运维阶段和 ci-pipeline 还接受阶段命令，intent 仍然是已发布；`lean status` 的"下一步"会提示 "optional: record deployment and operations ..."，只是提示。
+- **发布前后都能写**：任何模式都可选。发布前写计划类的页面（CI、部署流水线、环境、可观测性、事故响应、压测计划），配置提交并 verify 过，再 `lean release`。RELEASE 的哈希只管 release.md：里面有提交、代码指纹、verify 结果、审批表、Open items，和 `lean release` 那一刻的阶段进度（每个运维阶段当时是做完、跳过还是没开始）；运维页面本身的内容不在里面。所以批完以后再改或新加运维页面，RELEASE 不会作废，这些页面只是记录。但在 `lean release` 和 RELEASE 批准之间记下的阶段记录（`stage start/done/skip`，包括整段跳过运维）会让 release.md 作废，和少了一条审批一样，要重新 `lean release`、重新请求（v0.3.1；按日志里的记录比，不按时间）。所以运维阶段要么在 `lean release` 之前记好，要么等 RELEASE 批了再记。运维的配置文件算在代码指纹里：`lean release` 之后改了，要重新 verify、`lean release`、批。RELEASE 也不等运维页面。发布以后，只有运维阶段和 ci-pipeline 还接受阶段命令，intent 仍然是已发布；`lean status` 的"下一步"会提示 "optional: record deployment and operations ..."，只是提示。
 - **发布后改产品文件**（比如告警阈值）照已发布 intent 的老规矩：普通模式下小改动直接改，受监管模式要开新 intent。
 - **怎么跳**：`lean stage skip operations --reason "..."` 一次跳过还没有记录的运维阶段（不含 ci-pipeline）；ci-pipeline 要单独跳：`lean stage skip ci-pipeline --reason "..."`。
 
@@ -199,7 +199,7 @@ Status: released (RELEASE approved)
 ```
 
 - 上面是 v0.2 跑出来的。v0.3 的列表多几行：没开构想时，开头多一行 `- [S] Ideation — skipped: not requested (lean new without --ideation)`；Build and Test 后面多一行 CI Pipeline；Release 后面多 7 行运维阶段，整段跳过时只显示一行 `- [S] Operations — skipped: <理由>`。
-- 标记：`[x]` 做完，`[S]` 跳过，`[-]` 进行中，`[ ]` 没开始，`[A]` 等人批（口令已经打出来，还没批）。等人批时那一行是这样：`- [A] Requirements Analysis — waiting for approval: approve INCEPTION 8cf2cbce`。人这时打了口令也不会被接受的请求，不给口令，显示成 `[-] ... <种类> requested; the approval waits: <原因>`。比如：用了构想、IDEATION 还没批时的需求请求；`lean release` 现在过不了时的 RELEASE 请求。IDEATION 请求以后又重开了必做的构想阶段，也不给口令（见 1a）；`lean release` 之后又记下别的审批或驳回，RELEASE 也不给口令（见"命令"）。
+- 标记：`[x]` 做完，`[S]` 跳过，`[-]` 进行中，`[ ]` 没开始，`[A]` 等人批（口令已经打出来，还没批）。等人批时那一行是这样：`- [A] Requirements Analysis — waiting for approval: approve INCEPTION 8cf2cbce`。人这时打了口令也不会被接受的请求，不给口令，显示成 `[-] ... <种类> requested; the approval waits: <原因>`。比如：用了构想、IDEATION 还没批时的需求请求；`lean release` 现在过不了时的 RELEASE 请求。IDEATION 请求以后又重开了必做的构想阶段，也不给口令（见 1a）；`lean release` 之后又记下别的审批、驳回或阶段记录，RELEASE 也不给口令（见"命令"）。
 - 标记之间这一段进 git，所以只看每个 clone 都一样的东西（审计日志和文件），不看这个 clone 自己的状态：同一个提交、同一份日志，哪个 clone 写出来都一样。比如配了 checks、自己却没跑过 verify 的 clone，照样写出 `[A] Release — waiting for approval: approve RELEASE <哈希>`；但在那个 clone 里打这个口令不算（没有对当前代码通过的 verify），它的 `lean status` 会让你先跑 verify。构建测试和发布两行认两种代码：这个 clone 工作区里的，和已经提交的。所以 verify 完马上提交，提交里的这一段就写着 verify 过；某个 clone 多了没提交的文件（比如 Finder 的 .DS_Store）或改动，这一段也不变。工作区有没提交的产品改动时，`lean status` 在这一段外面另起一行 `Working tree: N uncommitted product change(s) (…)`，因为 verify 和 RELEASE 审批只看工作区（提交关卡看的是这次提交带了什么，见下面第 6 步）。
 - 审批、驳回和 verify 的结果会自动出现在列表里。阶段日志里也会列出每次审批、驳回和没被接受的口令（哪种、哈希、谁、什么时候）。阶段日志的每一条都写明来源：人在对话里打的标 `human (prompt)`，跑命令记下的标 `via CLI`。
 - 做完的阶段后来又改了（页面变了；代码生成阶段只比较计划，勾选不算。代码本身变了会显示在“构建测试”那一行：上次 verify 之后代码又改过），那一行后面会标 `(edited since)`。AI 应该重新跑一次 `lean stage done`，在说明里写改了什么。
@@ -288,7 +288,7 @@ Status: released (RELEASE approved)
 6. AI 跑 `lean verify`：执行 `checks` 里的命令，写 build-and-test-summary.md。配了 checks 时，没有对当前代码通过的 verify，`git commit` 会被拦住。verify 要单独跑一条命令，别和 `git commit` 串在一起。只带 `aidlc-docs/` 或 `.kiro/` 下文件的提交不用 verify（契约文件除外，它们算在代码指纹里），工作区里还有没暂存的产品改动也一样：比如代码做到一半，先 `git add aidlc-docs/ && git commit -m ...` 提交 Session notes。hook 看这次提交带了什么：已经暂存的，加上同一行里 `git add <路径>` 要加的。看不准时（`git commit -a`、`git add -A`、命令行里有 `cd` 或 `$(...)`），按整个工作区算。
 7. 评审要由没写这份代码的上下文来做：新开一个对话（`/chat new`），或者交给没写代码的子代理（pstack 的多模型评审也是子代理）。用 `--resume` 接着聊的老对话不算新的上下文。结果写进 `construction/build-and-test/review.md`。review.md 比最近一次 verify 和代码改动都新时，`lean status` 的"下一步"就指向 `lean release`；所以修完评审意见、重新 verify 之后，要在 review.md 里补上修了什么。
 8. AI 跑 `lean release` 写 operations/release.md（审批表里，被后来的审批取代的旧审批会标出来），补上"Open items"（没解决的问题、已知缺口、后续工作），再跑 `lean request RELEASE`。还有没提交的产品代码改动时，`lean release` 会拒绝，要先提交。你打 `approve RELEASE <哈希>`。release.md 的审批表里少了一条它该列的审批（按表里每一行的格子比，空格多少不算；注释里、表外面写的不算），这份 release.md 就作废了：该列的是这个 intent 的审批和所有 CR 的审批，比如需求改了又重新批了，或者别的团队批了一个 CR（不管批的时候哪个 intent 是当前的、在哪个 clone 里批的、那台机器的时钟准不准）。这时要重新 `lean release`、重新请求，旧口令不再算。这一条按审批表的内容比，不按时间。批完这个 intent 就关了：之后的修改和修 bug 都用 `lean new` 开新的。`lean status` 和会话开头注入的状态都会写明它已发布（RELEASED）。
-9. 可选：CI 流水线和运维的页面（见 1a），发布前后都能写，AI 不部署。用不上就 `lean stage skip ci-pipeline --reason "..."`、`lean stage skip operations --reason "..."`。
+9. 可选：CI 流水线和运维的页面（见 1a），在 `lean release` 之前记好，或者等 RELEASE 批了以后再记，AI 不部署。用不上就 `lean stage skip ci-pipeline --reason "..."`、`lean stage skip operations --reason "..."`。
 
 小改动（改错别字、改一个配置值、一个文件里的小修）不用开 intent，直接改；当前 intent 已经发布时也一样。受监管模式除外。
 
@@ -316,7 +316,7 @@ lean doctor                                          检查安装
 
 - `stage done` 在文档还没写、或者还是模板原样时会拒绝。
 - 发布以后，只有运维阶段和 ci-pipeline 还接受 `stage` 命令。
-- `request RELEASE` 只在 `lean release` 现在能通过、release.md 是 `lean release` 为当前代码写的、而且写完以后没有再记下别的审批或驳回（RELEASE 自己的不算）时才给口令。人打的 `approve RELEASE` 也按同样的条件查：比如这时 IDEATION 或需求过期了、被驳回了，或者又重新批过了，这条审批不算，日志里记一条 APPROVAL_REFUSED。这时阶段进度里那一行不给口令：过期或驳回时是 `[-] Release — RELEASE requested; the approval waits: not ready to release: ...`；重新批过以后是 ``[-] Release — release.md (written <日期>) does not list <种类> approved: run `release` again``，要重新 `lean release`（新的 release.md 会列上新的审批），再请求。RELEASE 自己被驳回不算：没改代码的话，同一份 release.md 照人的意见改好，就能再请求。
+- `request RELEASE` 只在 `lean release` 现在能通过、release.md 是 `lean release` 为当前代码写的、而且写完以后没有再记下别的审批或驳回（RELEASE 自己的不算）、也没有再记下阶段记录（构建测试和发布自己的不算）时才给口令。人打的 `approve RELEASE` 也按同样的条件查：比如这时 IDEATION 或需求过期了、被驳回了，或者又重新批过了，这条审批不算，日志里记一条 APPROVAL_REFUSED。这时阶段进度里那一行不给口令：过期或驳回时是 `[-] Release — RELEASE requested; the approval waits: not ready to release: ...`；重新批过以后是 ``[-] Release — release.md (written <日期>) does not list <种类> approved: run `release` again``，要重新 `lean release`（新的 release.md 会列上新的审批），再请求。记下了新的阶段记录时是 ``[-] Release — release.md (written <日期>) is older than <阶段> <skipped|done|started>: run `release` again``，同样要重新 `lean release`。RELEASE 自己被驳回不算：没改代码的话，同一份 release.md 照人的意见改好，就能再请求。
 
 ## hook 会拦的事
 
@@ -484,7 +484,7 @@ python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目
 - **阶段顺序和阶段记录不强制。** hook 只管审批、verify 和受保护的文件。漏记一个阶段不会被拦，只会在 `lean status` 和 release.md 里显示 `[ ]`；`lean status` 的"下一步"会按 AI-DLC 的顺序提醒。
 - **运维段只是记录。** 发布不等运维页面，RELEASE 也不管它们的内容；部署记录、压测结果、SLO 结果是 AI 照人和流水线给的事实填的，工具不核对真部署过没有。"AI 不部署"是写给 AI 的规则，禁止名单很短，挡不住所有部署命令。真正部署和回滚的控制在团队的 CI/CD 和权限上。
 - **代码计划只认一种勾选框**：PLAN 的哈希只把行首 `-` 或 `*` 后面的 `[x]`、`[X]` 当成 `[ ]`。别的写法（比如 `1. [x]`）勾了也算改，PLAN 审批会失效。
-- **RELEASE 只认 `lean release` 为当前代码写的 release.md。** 代码一改，要重新 verify、重新 `lean release`、重新批；`lean release` 之后又记下别的审批或驳回，也要重新 `lean release`、重新批。在另一个 clone 里批 RELEASE，那边的代码要完全一样（同一个提交，没有本地改动）；配了 checks 时，那边还要先跑通一次 verify（verify 只在跑它的那个 clone 里算数）。那边的阶段进度照样显示 `[A]`（见第 3 节），`lean status` 会提示先跑 verify。
+- **RELEASE 只认 `lean release` 为当前代码写的 release.md。** 代码一改，要重新 verify、重新 `lean release`、重新批；`lean release` 之后（RELEASE 批准以前）又记下别的审批、驳回或阶段记录，也要重新 `lean release`、重新批。在另一个 clone 里批 RELEASE，那边的代码要完全一样（同一个提交，没有本地改动）；配了 checks 时，那边还要先跑通一次 verify（verify 只在跑它的那个 clone 里算数）。那边的阶段进度照样显示 `[A]`（见第 3 节），`lean status` 会提示先跑 verify。
 - **契约文件和代码一样等审批。** 不管单团队还是多团队，`aidlc-docs/contracts/` 下的契约（OWNERS 和 `changes/` 里的 CR 除外）都算代码：要等 IDEATION（用了构想时）、需求和设计批了才能写，受监管模式下还要有 intent 和所属单元的 PLAN；没写进任何单元 Paths 的契约，受监管模式下要等所有 PLAN 都批了。审批前想先起草契约，写在 application-design.md 里。
 - **阶段日志按记录的先后排。** 多团队时两个团队的条目会穿插在一起；上面的阶段进度列表按 AI-DLC 的顺序排。
 - **单元别叫 `swarm`**：pstack 的并行子代理把报告写在 `construction/swarm/` 下，会和这个单元的目录混在一起。

@@ -1837,6 +1837,11 @@ def stage_status(pj, intent, st, unit):
         if missing and not (pend and pending_refused(pj, intent, pend)):  # a refusal reason first
             return "-", "release.md (written %s) does not list %s: run `release` again" % (
                 written["ts"][:10], missing_text(missing))
+        stale = release_stale_records(pj, intent, written) if written and os.path.exists(path) else []
+        pend = pj.pending_request(path) if stale else pend
+        if stale and not (pend and pending_refused(pj, intent, pend)):
+            return "-", "release.md (written %s) is older than %s: run `release` again" % (
+                written["ts"][:10], stale_text(stale))
         note = approval_note(pj, path, intent)
         if note:
             return note
@@ -2366,6 +2371,43 @@ def release_missing(pj, intent):
             and approval_key(e) not in listed]
 
 
+def release_stage_records(pj, intent):
+    """The intent's stage records that release.md's Stages section shows: every STAGE_STARTED, STAGE_COMPLETED,
+    STAGE_SKIPPED and PHASE_SKIPPED, except the Release stage's own and Build and Test's (verify records those; the
+    code fingerprint already ties release.md to the verified code)."""
+    return [e for e in pj.events() if e.get("intent") == intent and e.get("hash")
+            and (e.get("event") == "PHASE_SKIPPED" or (e.get("event") in STAGE_EVENTS and (e.get("data") or {}).get(
+                "stage") not in ("release", "build-and-test")))]
+
+
+def release_stale_records(pj, intent, written=None):
+    """The stage records recorded after the `lean release` run that wrote release.md (v0.3.1): its Stages section
+    does not show them, so release.md needs `lean release` again, as for a missing approval. Goes by the records
+    that run saw (their ledger hashes), not by the clocks of the clones. A run from before 0.3.1 kept no such list:
+    nothing counts as newer then."""
+    written = written or last_release_write(pj, intent)
+    seen = (written or {}).get("data", {}).get("stage_records")
+    if not isinstance(seen, list):
+        return []
+    seen = set(seen)
+    return [e for e in release_stage_records(pj, intent) if e["hash"][:16] not in seen]
+
+
+def stale_text(evs):
+    """'Operations skipped, CI Pipeline skipped' for release_stale_records."""
+    words = {"STAGE_STARTED": "started", "STAGE_COMPLETED": "done", "STAGE_SKIPPED": "skipped",
+             "PHASE_SKIPPED": "skipped"}
+    names = []
+    for e in evs:
+        d = e.get("data") or {}
+        st = STAGE_BY_ID.get(d.get("stage"))
+        name = PHASES.get(d.get("phase")) if e["event"] == "PHASE_SKIPPED" else (
+            (st.name if st else one_line(d.get("stage"), 60)) + (" (%s)" % one_line(d["unit"], 60) if d.get("unit")
+                                                                 else ""))
+        names.append("%s %s" % (name or "?", words[e["event"]]))
+    return ", ".join(names[-3:]) + (" and %d more" % (len(names) - 3) if len(names) > 3 else "")
+
+
 def missing_text(evs):
     """'REQUIREMENTS approved, CR-shop-1 approved' for release_missing."""
     return ", ".join("%s approved" % kind_label(e.get("data") or {}) for e in evs[-3:]) + (
@@ -2490,7 +2532,8 @@ def next_step(pj, intent, lv, current):
     rel_s, _ = pj.approval_state(rel)
     written = last_release_write(pj, intent)
     for_this_code = written and written["data"].get("fingerprint") == pj.fingerprint()
-    if rel_s in ("draft", "stale", "rejected") and for_this_code and not release_missing(pj, intent):
+    missing, stale = (release_missing(pj, intent), release_stale_records(pj, intent, written)) if written else ([], [])
+    if rel_s in ("draft", "stale", "rejected") and for_this_code and not missing and not stale:
         wait = waiting_for(pj, rel)
         if wait:
             return wait
@@ -2501,7 +2544,8 @@ def next_step(pj, intent, lv, current):
     again = ""
     if os.path.exists(rel):
         again = (" (`request RELEASE` needs the release.md it writes)" if not written else
-                 " again (its Approvals table lacks newer approvals)" if for_this_code else
+                 " again (its Approvals table lacks newer approvals)" if for_this_code and missing else
+                 " again (its Stages section is older than %s)" % stale_text(stale) if for_this_code and stale else
                  " again (the code changed since it wrote release.md)")
     if review_is_current(pj, intent, lv):  # the review is written: what is left is the release record
         then = "run `%s release`%s; the review (%s) is newer than the last verify and code change" % (
@@ -2894,6 +2938,10 @@ def record_approval(pj, intent, kind, given_hash, words, session):
         if missing:
             return refused("release", "operations/release.md does not list %s: its Approvals table is out of date. "
                            "Ask for `%s release` and a fresh request." % (missing_text(missing), TOOL), target)
+        stale = release_stale_records(pj, intent, written)
+        if stale:
+            return refused("release", "operations/release.md was written before %s: its Stages section is out of "
+                           "date. Ask for `%s release` and a fresh request." % (stale_text(stale), TOOL), target)
     if kind in ("REQUIREMENTS", "INCEPTION"):  # Ideation in use: its hand-off comes before the requirements
         idea = requirements_ideation_problem(pj, intent)
         if idea:
@@ -3814,6 +3862,9 @@ def cmd_request(pj, args):
         elif not problems and release_missing(pj, intent):
             problems.append("operations/release.md does not list %s (run `%s release` again)" % (
                 missing_text(release_missing(pj, intent)), TOOL))
+        elif not problems and release_stale_records(pj, intent, written):
+            problems.append("operations/release.md was written before %s: its Stages section is out of date (run "
+                            "`%s release` again)" % (stale_text(release_stale_records(pj, intent, written)), TOOL))
         if problems:
             print("Cannot request RELEASE: not ready to release: %s." % "; ".join(problems))
             return 1
@@ -4081,7 +4132,9 @@ def cmd_release(pj, args):
     path = pj.doc(intent, RELEASE_DOC)
     write_text(path, "\n".join(body) + "\n")
     pj.append("STAGE_STARTED", {"stage": "release", "unit": None, "path": rel(pj.root, path),
-                                "sha256": sha256_file(path), "fingerprint": fp, "head": head}, intent)
+                                "sha256": sha256_file(path), "fingerprint": fp, "head": head,
+                                "stage_records": [e["hash"][:16] for e in release_stage_records(pj, intent)]},
+              intent)
     refresh_state_doc(pj, intent)
     if not checks:
         print("Warning: no checks are configured in %s/lean.json, so nothing was verified; release.md says so." % DOCS)
