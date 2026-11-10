@@ -293,9 +293,11 @@ class StandardMode(Base):
             r = self.write(p)
             self.assertEqual(r.returncode, 2, p)
             self.assertIn("blocked (records)", r.stderr)
-        for c in ["cat aidlc-docs/audit/x.jsonl", "echo '{}' | python3 .kiro/aidlc-lean/aidlc_lean.py hook UserPromptSubmit",
-                  "echo x > .kiro/hooks/a.json", "rm .kiro/aidlc-lean/aidlc_lean.py", "cat .aidlc-lean/turn.json"]:
+        for c in ["echo '{}' | python3 .kiro/aidlc-lean/aidlc_lean.py hook UserPromptSubmit",
+                  "echo x > .kiro/hooks/a.json", "rm .kiro/aidlc-lean/aidlc_lean.py", "cat x > .aidlc-lean/turn.json"]:
             self.assertEqual(self.bash(c).returncode, 2, c)
+        for c in ["cat aidlc-docs/audit/x.jsonl", "cat .aidlc-lean/turn.json"]:  # 0.3.1: reading them passes
+            self.assertEqual(self.bash(c).returncode, 0, c)
         for c in ["git add aidlc-docs/audit; echo x >> aidlc-docs/audit/a.jsonl", "git add -f .aidlc-lean/turn.json",
                   "git show HEAD:aidlc-docs/audit/a.jsonl > aidlc-docs/audit/a.jsonl"]:
             self.assertEqual(self.bash(c).returncode, 2, c)

@@ -287,3 +287,44 @@ Order in the Stage progress list:
 - New skills, each ≤ 600 words: `aidlc-lean-ideation`, written for product managers (how to run each stage, one page each, the IDEATION hand-off), and `aidlc-lean-operations` (CI, deployment, environments, observability, performance, runbooks, feedback; write, don't execute; record the real deployment after it happens).
 - Existing skills and the steering mention the optional phases. The steering stays ≤ 1,000 words.
 - README and COMPARISON drop "没有构想、部署、运维阶段".
+
+## 10. v0.3.1: fixes (2026-11-10)
+
+A fixes-only release: the round-1 review items R1-106 to R1-120, one false block, and the follow-ups from the first live Kiro run of the v0.3 phases, each with a regression test (`tests/test_v031_fixes.py`; R1-120 in `test_fixes_install.VendorPstack`). `VERSION` is 0.3.1. Stages, gates and approvals are otherwise as in 0.3. Not taken from the v0.3.1-trim experiment: the automatic skips for `Size: small`, several ids per `lean stage` command, the optional review and the re-review rule. The user decided that small, clear requirements should not use Lean at all (README "什么时候用 Lean").
+
+### 10.1 Review items (round 1)
+
+- R1-106: `lean verify` decodes check output with `errors="replace"`; a byte that is not UTF-8 no longer crashes it, and the check passes or fails by its exit code.
+- R1-107: team names are kept as written (`init --team`, `AIDLC_LEAN_TEAM`), and every comparison goes through `team_key` (letters of any script, digits and `_`; `-` and `.` read as `_`). CR ids, `Owner team` lines and `### Next (team …)` headings accept such names.
+- R1-108: `fingerprint_exclude` adds to `aidlc-docs/**` and `.kiro/**` (`RECORD_GLOBS`: always records, contracts excepted) instead of replacing them.
+- R1-109: with a git merge conflict in aidlc-state.md, each side gets the regenerated region, and what differs outside it stays one whole conflict hunk with git's markers. Markers that do not pair up leave the page as it is, with a message.
+- R1-110: `lean init` checks and appends `.gitignore` as bytes, as install.sh's check reads it.
+- R1-111: full-width (U+3000) and no-break spaces in approval, rejection and permission lines count as spaces.
+- R1-112: in a rejection the kind ends where no ASCII letter, digit or `_` follows (`驳回 REQUIREMENTS需要…`).
+- R1-113: the commit gate runs only for a real `git commit`: the line is read with its quoting, after git's global options, also inside `sh -c` and `eval`, never inside `--note` text. A line the reader cannot follow (`$`, backticks, a here-document) is matched as text, as before.
+- R1-114: "a commit of records only needs no verify" goes by what the commit holds: the staged paths plus the changes under the paths each `git add` on the line names. Where that cannot be told (`commit -a` or with paths, `add -A`/`-u`, `cd`, other git commands that stage) the whole working tree counts, as before.
+- R1-115: an approval line whose hash another intent's request printed is refused (check `intent`) with "switch back first (`lean use <intent>`)", not "the file changed".
+- R1-116: the intent folder is named by the UTC date, like `Created` and every date the tool records.
+- R1-117: `lean new` with a name that has no folder letter (`lean new 退款`) says the name is the folder (a-z, 0-9, `-`) and the title goes in `--title`.
+- R1-118: `lean init --regulated|--multi-team` on a configured project prints the same WARNING as install.sh; install.sh no longer passes those flags to init then, so it warns once.
+- R1-119: README quotes the Release row as the tool prints it.
+- R1-120: `tools/vendor_pstack.py` lists every upstream text that is gone in one run.
+- Not here: R1-101 (approvers and the Brain bridge; another team handles it in brain-kit) and R1-121 to R1-123 (they apply to the trim only).
+
+### 10.2 Ported from the v0.3.1-trim work
+
+- **False block** (trim §10.3 item 4): a shell line that only reads may name the record paths: every simple command on it is `cat`, `head`, `tail`, `wc`, `ls`, `grep`, `jq`, `stat`, `diff`, `echo`, `cd` or a few more, read-only git, or `lean` naming no record path, with no redirection except from a file or to `/dev/null`. Writes, pipes into other programs, other readers (`sed`, `awk`, `find`, `python`), `$(…)` and here-documents are blocked as before. README, the guard hook's description and the construction skill name the commands that pass and keep "use a file-read tool" for the rest.
+- **The follow-ups from the live run of the v0.3 phases** (trim §10.5):
+  1. A stage or phase record made after `lean release` voids its release.md, as a missing approval does: `lean release` keeps the ledger hashes (16 characters) of the intent's stage records it saw in its `STAGE_STARTED {stage: release}`; `request RELEASE` and the approval line refuse with "run `release` again". Matched by the hashes, not the clocks; a release.md written before 0.3.1 is not checked; nothing changes after the RELEASE approval. The steering's Operations line, the release skill and README say when to record Operations stages.
+  2. The ideation and inception skills record a stage marked `(edited since)` again with `stage done` before the request.
+  3. With an `approvers` list for the kind, `lean request <KIND>` and the `[A]` row name who may approve.
+  4. Not changed, as in the trim (verify chained with `git commit`: the steering and the gate cover it).
+  5. `stage start` on a stage already in progress records nothing new.
+  6. The initiative-brief template and the ideation skill do not invent commitments (budget, people): "not confirmed (ask <who>)".
+  7. Operations skill: after RELEASE, pages only; product config is a new intent, or in standard mode a small edit named in the stage note and followed by `lean verify`.
+  8. Release skill: after RELEASE only the Operations pages and ci-pipeline take edits; design changes, follow-ups and fixes start a new intent.
+- The texts keep their limits (steering 999 words, each skill ≤ 600): where a line was added, the same file was tightened, and lines that repeated what the tool or another card says went (e.g. the operations card's "`lean status` suggests them", the inception card's "give every skip a reason").
+
+### 10.3 Docs
+
+- README "什么时候用 Lean": small, clear requirements use plain Kiro (vibe); Lean is for requirements with gaps, cross-team work and regulated work. Reason: the 3-round benchmark (Kiro v3 + Kimi K3): on the small task Lean cost about 5.6× the credits and 4× the time with the same quality; on the task with gaps Lean's first delivery beat vibe all 3 times (60/57/56 vs 50/48/55 of 60). COMPARISON follows.

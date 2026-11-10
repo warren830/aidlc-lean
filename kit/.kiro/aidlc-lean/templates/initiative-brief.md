@@ -22,7 +22,7 @@ AI-DLC stage: Ideation · Approval Handoff · Intent: {{INTENT}}
 <!-- From team-assessment.md: who builds it, their capacity, open skill gaps, who approves what. -->
 
 ## Readiness
-<!-- Each line: yes / no / n.a., with a short note. A "no" needs a condition in the recommendation. -->
+<!-- Each line: yes / no / n.a., with a short note. "yes" only when the PM (or the person who decides) said so; otherwise write "not confirmed (ask <who>)", never a guess. A "no" or "not confirmed" needs a condition in the recommendation. -->
 - Stakeholders agree on the intent and scope: 
 - Every critical risk has an owner and a mitigation: 
 - Budget and people are committed: 

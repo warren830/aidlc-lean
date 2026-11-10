@@ -5,7 +5,7 @@
       "name": "aidlc-lean-guard",
       "trigger": "PreToolUse",
       "matcher": "^(?!(?:read|fs_read|read_file|read_files|read_code|list_directory|file_search|glob|grep_search|grep|web_fetch|web_search|disclose_context|tool_load|thinking|todo_list|report_progress|subagent_response)$)",
-      "description": "AI-DLC Lean: before a file write or command, checks the approvals code needs (IDEATION when Ideation is used, requirements and application design; in regulated mode also the unit's code-generation plan), protected tests, contract ownership, the files only the tool writes, dangerous commands and the verify-before-commit rule. Read tools are not checked; shell commands that touch the kit's records (even reads such as cat aidlc-docs/lean.json) may be blocked.",
+      "description": "AI-DLC Lean: before a file write or command, checks the approvals code needs (IDEATION when Ideation is used, requirements and application design; in regulated mode also the unit's code-generation plan), protected tests, contract ownership, the files only the tool writes, dangerous commands and the verify-before-commit rule. Read tools are not checked. A shell line that only reads the kit's records with cat, head, tail, grep, jq, ls and the like passes; other shell commands that touch the kit's records (sed, awk, find, python, any write) are blocked: read those with a file-read tool.",
       "action": { "type": "command", "command": "python3 .kiro/aidlc-lean/aidlc_lean.py hook PreToolUse" },
       "timeout": 120
     }

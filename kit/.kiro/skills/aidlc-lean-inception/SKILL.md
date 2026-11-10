@@ -4,7 +4,7 @@ description: Use for the Inception phase of an AI-DLC Lean intent - clarifying q
 ---
 # Inception: what to build and why
 
-Each stage: `lean stage start <id>`, fill its page, `lean stage done <id> --note "<inputs, outputs, decisions>"`; or `lean stage skip <id> --reason "<why>"`. Workspace Detection and Workflow Planning are folded in: read the repo first; give every skip a reason. After Ideation, start from the approved initiative brief and its pages; ask only what they leave open. Before every stop (the question batch, an approval request), update the Session notes in aidlc-state.md: Status, Next, Open questions.
+Each stage: `lean stage start <id>`, fill its page, `lean stage done <id> --note "<inputs, outputs, decisions>"`; or `lean stage skip <id> --reason "<why>"`. Workspace Detection and Workflow Planning are folded in: read the repo first. After Ideation, start from the approved initiative brief and its pages; ask only what they leave open. Before every stop (the question batch, an approval request), update aidlc-state.md's Session notes: Status, Next, Open questions.
 
 ## Clarifying questions (once, at the start)
 - First read the code, docs and contracts the change touches; never ask what they answer.
@@ -16,7 +16,7 @@ Brownfield only. `architecture.md`: system overview (what exists; how it is buil
 
 ## 2. Requirements Analysis (`requirements`, never skipped)
 - **Size**: `large` for a new public module, API or data model, a schema or API change, several modules, a migration, or a risky change; else `small`. Only small may skip application design.
-- **Goal** (2-4 sentences); **Not doing** (the boundary).
+- **Goal** (2-4 sentences); **Not doing**.
 - **Acceptance criteria** AC-1…: testable, with concrete values (input → expected output, status code or state), including the unhappy paths: who gets 401/403, validation, limits.
 - **Non-functional targets**: numbers, not adjectives ("p95 < 300 ms at 50 rps"), and the applicable security, privacy and compliance rules.
 - **Assumptions** A-1…: what you guessed, for the human to confirm.
@@ -30,9 +30,9 @@ Run for several user types or changed user-facing flows. Personas inline, one li
 Components and responsibilities; interfaces and methods (signature, input → output, errors, who may call); dependencies with a small diagram; data model and migrations; key decisions. High level: business rules belong to Functional Design.
 
 ## 5. Units Generation (`units`)
-Run when the work splits across teams, services or deployables. `unit-of-work.md` is one table; its first column, `Unit`, holds short lowercase names (`api`, `web`) used as folder names and `--unit` values. Units meet only at contracts (skill `aidlc-lean-multi-team`). Skip for one unit, called `app`.
+Run when the work splits across teams, services or deployables. `unit-of-work.md` is one table; its first column, `Unit`, holds short lowercase names (`api`, `web`), the folder names and `--unit` values. Units meet only at contracts (skill `aidlc-lean-multi-team`). Skip for one unit, called `app`.
 
 ## Approval
-When the Inception pages are done, run `lean request INCEPTION` (it covers requirements.md and application-design.md) and show the human the exact line it prints. If they want requirements settled first: `lean request REQUIREMENTS` now, `lean request DESIGN` after the design.
+When the Inception pages are done, run `lean request INCEPTION` (requirements.md and application-design.md together) and show the human its exact line. If they want requirements settled first: `lean request REQUIREMENTS` now, `lean request DESIGN` after the design.
 
-With Ideation, IDEATION must be approved first (and current in regulated mode). Wait for the approval; write no code before it. On a rejection or correction, update the page and request again: every edit voids the old approval.
+Record a stage marked `(edited since)` again (`lean stage done`, noting what changed) before the request. With Ideation, IDEATION must be approved first (and current in regulated mode). Write no code before the approval. On a rejection or correction, update the page and request again: every edit voids the old approval.

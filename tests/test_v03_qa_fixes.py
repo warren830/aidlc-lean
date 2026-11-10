@@ -228,7 +228,7 @@ class CiPipelineUnitAfterUpgrade(Fix):
         self.approve("PLAN", "--unit", "api")
         self.assertIn("blocked (plan): the code-generation plan of unit ci-pipeline", self.write("ci/build.sh").stderr)
         self.commit_all("v0.2 work")
-        self.install(REPO, "0.3.0")
+        self.install(REPO, "0.3.1")  # the kit in this checkout
         st = self.status()
         self.assertNotIn("ignored unit names", st)
         self.assertIn("- [x] Functional Design (ci-pipeline) — done", st)

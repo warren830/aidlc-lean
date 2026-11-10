@@ -85,6 +85,7 @@ import json
 import os
 import posixpath
 import re
+import shlex
 import shutil
 import socket
 import stat
@@ -100,7 +101,7 @@ try:
 except ImportError:  # Windows: no advisory locks; parallel hooks then run unlocked
     fcntl = None
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 KIT_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES = os.path.join(KIT_DIR, "templates")
 TOOL = "python3 .kiro/aidlc-lean/aidlc_lean.py"
@@ -126,10 +127,15 @@ DEFAULT_CONFIG = {
     "contracts_dir": DOCS + "/contracts",
     "teams": [],
     "approvers": {},
-    "fingerprint_exclude": [DOCS + "/**", ".kiro/**"],
+    "fingerprint_exclude": [],  # the team's own; RECORD_GLOBS always count too
     "state_reminder_after_writes": 25,
     "resume_gap_hours": 4,
 }
+
+# Process records, never product code (except contracts_dir): the ledger is under aidlc-docs/, so a fingerprint
+# that counted it would change with every verify. lean.json's fingerprint_exclude adds to these, it does not replace
+# them.
+RECORD_GLOBS = (DOCS + "/**", ".kiro/**")
 
 # ---------------------------------------------------------------- the AI-DLC stages
 # doc: the stage's document, relative to aidlc-docs/<intent>/ ({unit} for per-unit stages);
@@ -237,13 +243,16 @@ APPROVAL_KINDS = ("IDEATION", "REQUIREMENTS", "DESIGN", "INCEPTION", "PLAN", "RE
 
 READ_TOOL_RE = re.compile(r"(read|list|glob|grep|search|fetch|view|thinking|todo|report|load|disclose|subagent_response)", re.I)
 SHELL_TOOLS = {"execute_bash", "execute_pwsh", "execute_cmd", "shell", "bash", "run_command"}
-KIND_RE = r"IDEATION|REQUIREMENTS|DESIGN|INCEPTION|PLAN|RELEASE|CR-[A-Za-z0-9_]+-\d+"
+KIND_RE = r"IDEATION|REQUIREMENTS|DESIGN|INCEPTION|PLAN|RELEASE|CR-\w+-\d+"  # CR-<team_key>-<n>
 APPROVE_RE = re.compile(  # the whole line must be the approval, so "approve design after X" does not count
     r"(?im)^[ \t]*(approve|approved|批准|同意)[ \t]*[:：]?[ \t]*(" + KIND_RE + r")"
     r"(?:[ \t]+([0-9a-fA-F]{6,64}))?[ \t]*(\(via[^)\n]{1,200}\))?[ \t]*[.!。！]?[ \t]*$")
-REJECT_RE = re.compile(r"(?im)^[ \t]*(reject|驳回|拒绝)[ \t]*[:：]?[ \t]*(" + KIND_RE + r")\b(.*)$")
+# the kind ends where no ASCII letter, digit or _ follows: Chinese text may come right after it (驳回 DESIGN需要…)
+REJECT_RE = re.compile(r"(?im)^[ \t]*(reject|驳回|拒绝)[ \t]*[:：]?[ \t]*(" + KIND_RE + r")(?![A-Za-z0-9_])(.*)$")
 NEAR_APPROVAL_RE = re.compile(r"(?im)^[ \t]*(approve|approved|批准|同意)[ \t]*[:：]?[ \t]*"
                               r"(SPEC|IDEATION|REQUIREMENTS|DESIGN|INCEPTION|PLAN|RELEASE|CR-)")
+# spaces a Chinese input method or a copy from a web page may put in an approval line: read as plain spaces
+WIDE_SPACE_RE = re.compile("[\u3000\u00a0]")
 ALLOW_PROTECTED_RE = re.compile(r"(?im)^[ \t]*(allow test change|允许改测试|允许修改测试|允许修改验收测试)[ \t]*[.!。！]?[ \t]*$")
 KIT_PATHS = (".kiro/hooks/", ".kiro/aidlc-lean/", ".kiro/steering/aidlc-lean.md", ".kiro/skills/aidlc-lean-",
              ".kiro/steering/aidlc-lean-pstack.md", ".kiro/skills/pstack-", ".kiro/agents/lean-")
@@ -606,8 +615,10 @@ def norm_kind(kind):
 
 
 def team_key(name):
-    """A team name as `init --team` and `cr new` write it (letters, digits and _); '' for none."""
-    return re.sub(r"[^A-Za-z0-9_]", "_", str(name or "").strip("`* \t"))
+    """A team name as the tool compares it, and as CR ids hold it: letters (any script), digits and _, every other
+    character read as _ (`web-team`, `web.team` and `web_team` are one team); '' for none. Names are kept as
+    written (`init --team`, AIDLC_LEAN_TEAM, OWNERS, unit-of-work.md, CRs); every comparison goes through this."""
+    return re.sub(r"[^\w]", "_", str(name or "").strip("`* \t"))
 
 
 def parse_opts(args, allowed):
@@ -1140,9 +1151,11 @@ class Project:
         return bool(c) and c != base and c != base + "/OWNERS" and not c.startswith(base + "/changes/")
 
     def is_record_path(self, relpath):
-        """Process records, not product code: fingerprint_exclude (aidlc-docs/**, .kiro/**), but contracts count
-        as code."""
-        return matches(relpath, self.cfg.get("fingerprint_exclude")) and not self.is_contract(relpath)
+        """Process records, not product code: RECORD_GLOBS (aidlc-docs/**, .kiro/**) and the team's
+        fingerprint_exclude, but contracts count as code."""
+        extra = self.cfg.get("fingerprint_exclude") or []
+        globs = RECORD_GLOBS + tuple([extra] if isinstance(extra, str) else extra)
+        return matches(relpath, globs) and not self.is_contract(relpath)
 
     def fingerprint(self):
         """Content fingerprint of the product code: every tracked file and every untracked, not-ignored file,
@@ -1364,7 +1377,7 @@ class Project:
             m = re.search(r"(?im)^\s*[-*]?\s*%s\s*:\s*(.+)$" % re.escape(key), text)
             f[key] = m.group(1).strip() if m else ""
         f["paths"] = [p.strip() for p in f["Paths"].split(",") if p.strip()]
-        m = re.match(r"(CR-[A-Za-z0-9_]+-\d+)(-|\.md)", os.path.basename(path))
+        m = re.match(r"(CR-\w+-\d+)(-|\.md)", os.path.basename(path))
         f["id"] = m.group(1) if m else os.path.basename(path)[:-3]
         return f
 
@@ -1384,7 +1397,8 @@ class Project:
             if not self.contract_match(relpath, f["paths"]) or not me or team_key(f["Requested by team"]) != me:
                 continue
             status, ev = self.approval_state(path)
-            if status == "approved" and (ev["actor"].get("team") == owner) and not self.cr_closed(f["id"]):
+            if status == "approved" and team_key(ev["actor"].get("team")) == team_key(owner) \
+                    and not self.cr_closed(f["id"]):
                 return f["id"]
         return None
 
@@ -1514,6 +1528,28 @@ def approver_keys(target):
             keys.append("DESIGN")
         return keys
     return [kind, "SPEC"] if kind in ("REQUIREMENTS", "DESIGN") else [kind]
+
+
+def allowed_approvers(pj, target):
+    """The emails that may approve the target, when `approvers` lists apply to its kind (v0.3.1): those in every
+    list that applies (approver_keys), in the first list's order; None when no list applies."""
+    lists = []
+    for key in approver_keys(target):
+        value = (pj.cfg.get("approvers") or {}).get(key)
+        if value:
+            lists.append([value] if isinstance(value, str) else list(value))
+    if not lists:
+        return None
+    return [x for x in lists[0] if all(x in other for other in lists[1:])]
+
+
+def approvers_text(pj, target):
+    """'Only a@x, b@y may approve INCEPTION (approvers in aidlc-docs/lean.json)', or '' when no list applies."""
+    allowed = allowed_approvers(pj, target)
+    if allowed is None:
+        return ""
+    return "Only %s may approve %s (approvers in %s/lean.json)" % (
+        ", ".join(allowed) or "no one (the approvers lists that apply have no email in common)", target["kind"], DOCS)
 
 
 # ---------------------------------------------------------------- Ideation (v0.3): the IDEATION approval
@@ -1720,7 +1756,9 @@ def approval_note(pj, path, intent=None):
         why = pending_refused(pj, intent, pend) if intent else None
         if why:
             return "-", "%s requested; the approval waits: %s" % (pend["data"]["kind"], why)
-        return "A", "waiting for approval: approve %s %s" % (pend["data"]["kind"], pend["data"]["sha256"][:8])
+        only = approvers_text(pj, pend["data"])
+        return "A", "waiting for approval: approve %s %s%s" % (pend["data"]["kind"], pend["data"]["sha256"][:8],
+                                                             ("; " + only[0].lower() + only[1:]) if only else "")
     if s == "rejected":
         return "-", "rejected · %s: %s" % (last["ts"][:10], one_line(d.get("words"), 120))
     if s == "stale":
@@ -1823,6 +1861,11 @@ def stage_status(pj, intent, st, unit):
         if missing and not (pend and pending_refused(pj, intent, pend)):  # a refusal reason first
             return "-", "release.md (written %s) does not list %s: run `release` again" % (
                 written["ts"][:10], missing_text(missing))
+        stale = release_stale_records(pj, intent, written) if written and os.path.exists(path) else []
+        pend = pj.pending_request(path) if stale else pend
+        if stale and not (pend and pending_refused(pj, intent, pend)):
+            return "-", "release.md (written %s) is older than %s: run `release` again" % (
+                written["ts"][:10], stale_text(stale))
         note = approval_note(pj, path, intent)
         if note:
             return note
@@ -2065,9 +2108,89 @@ def progress_region(pj, intent):
                      ["", "## Stage log"] + (log or ["", "(nothing recorded yet)"]) + [END_MARK])
 
 
+CONFLICT_MARK_RE = re.compile(r"^(<{7}|\|{7}|={7}|>{7})(?:[ \t]|$)")
+
+
+class ConflictMarkers(Exception):
+    """aidlc-state.md holds git merge-conflict markers that do not pair up: the page is left as it is."""
+
+
+def conflict_sides(text):
+    """None when text holds no git merge conflict; else (ours, theirs, opening line, closing line): the text with
+    every conflict hunk resolved to one side (a diff3 base section dropped), and the first hunk's marker lines.
+    Raises ConflictMarkers when the markers do not pair up (a hunk cut short, a stray `>>>>>>>`). A `=======` line
+    outside a hunk is text (a Markdown heading underline)."""
+    if not re.search(r"(?m)^(<{7}|>{7})(?:[ \t]|$)", text):
+        return None
+    ours, theirs, opened, closed, state = [], [], None, None, "out"
+    for line in text.splitlines(True):
+        m = CONFLICT_MARK_RE.match(line)
+        mark = m.group(1)[0] if m else ""
+        if state == "out" and mark == "<":
+            state, opened = "ours", opened or line
+        elif state == "out" and mark == ">":
+            raise ConflictMarkers("a `>>>>>>>` line without its `<<<<<<<`")
+        elif state == "out":
+            ours.append(line)
+            theirs.append(line)
+        elif state in ("ours", "base") and mark == "=":
+            state = "theirs"
+        elif state == "ours" and mark == "|":
+            state = "base"
+        elif state == "theirs" and mark == ">":
+            state, closed = "out", closed or line
+        elif mark:
+            raise ConflictMarkers("a `%s` line where it cannot be" % m.group(1))
+        elif state == "ours":
+            ours.append(line)
+        elif state == "theirs":
+            theirs.append(line)
+    if state != "out":
+        raise ConflictMarkers("a conflict that is not closed by `>>>>>>>`")
+    end = lambda line: line if line.endswith("\n") else line + "\n"  # noqa: E731
+    return "".join(ours), "".join(theirs), end(opened), end(closed)
+
+
+def conflict_text(a, b, opened, closed):
+    """a and b as one text: their common first and last lines, and between them one conflict hunk with git's
+    markers holding what differs (nothing when a == b)."""
+    if a == b:
+        return a
+    x, y = a.splitlines(True), b.splitlines(True)
+    p = 0
+    while p < min(len(x), len(y)) and x[p] == y[p]:
+        p += 1
+    s = 0
+    while s < min(len(x), len(y)) - p and x[len(x) - 1 - s] == y[len(y) - 1 - s]:
+        s += 1
+    whole = lambda lines: [l if l.endswith("\n") else l + "\n" for l in lines]  # noqa: E731
+    return "".join(x[:p] + [opened] + whole(x[p:len(x) - s]) + ["=======\n"] + whole(y[p:len(y) - s]) + [closed]
+                   + x[len(x) - s:])
+
+
 def replace_region(text, region):
-    """Put region between the lean markers; everything else stays as it is. Without (both) markers the region
-    goes right after the header (the title line and the lines that follow it)."""
+    """Put region between the lean markers; everything else stays as it is. With a git merge conflict in the page
+    (two clones' aidlc-state.md), each side gets the region, and what differs outside it stays one whole conflict
+    hunk for people to merge (the Session notes): a hunk that ran across a marker is cut there, never left half.
+    Raises ConflictMarkers when the markers do not pair up."""
+    sides = conflict_sides(text)
+    if not sides:
+        return plain_replace_region(text, region)
+    ours, theirs, opened, closed = sides
+    parts = []
+    for side in (ours, theirs):
+        new = plain_replace_region(side, region)
+        k = new.index(region)
+        before, after = new[:k], new[k + len(region):]
+        parts.append((before + ("\n" if before and not before.endswith("\n") else ""),
+                      after if after.startswith("\n") else "\n" + after))
+    (b1, a1), (b2, a2) = parts
+    return conflict_text(b1, b2, opened, closed) + region + conflict_text(a1, a2, opened, closed)
+
+
+def plain_replace_region(text, region):
+    """replace_region for a page without merge conflict markers. Without (both) markers the region goes right
+    after the header (the title line and the lines that follow it)."""
     b = text.find(BEGIN_MARK)
     e = text.find(END_MARK, b + len(BEGIN_MARK)) if b >= 0 else -1
     if b >= 0 and e >= 0:
@@ -2083,7 +2206,8 @@ def replace_region(text, region):
 
 
 def update_state_doc(pj, intent):
-    """Regenerate only the progress region of aidlc-state.md; the rest (Session notes) belongs to the agent."""
+    """Regenerate only the progress region of aidlc-state.md; the rest (Session notes) belongs to the agent.
+    (path, note) or None without an intent; note says what a merge conflict in the page leaves to people."""
     if not intent or intent not in pj.list_intents():
         return None
     path = pj.doc(intent, STATE_DOC)
@@ -2092,19 +2216,33 @@ def update_state_doc(pj, intent):
         text = read_text(path, None)
         if text is None:
             text = template(STATE_DOC, **doc_vars(pj, intent))
+        conflict = conflict_sides(text) is not None  # raises ConflictMarkers: then the page stays as it is
         new = replace_region(text, progress_region(pj, intent))
         if new != text:
             write_text(path, new)
-    return path
+    if conflict:
+        return path, ("aidlc-state.md has a merge conflict: the part between the lean markers was rewritten from "
+                      "the ledger; merge the conflict left outside it (the Session notes) by hand, remove its markers "
+                      "and commit." if conflict_sides(new) else "aidlc-state.md had a merge conflict only in the part "
+                      "between the lean markers: rewritten from the ledger, so `git add` it.")
+    return path, None
 
 
 def refresh_state_doc(pj, intent, prefix=""):
     """update_state_doc for commands and hooks: the record is already in the ledger, so a failure here only
     leaves the page behind until the next command."""
     try:
-        update_state_doc(pj, intent)
+        _, note = update_state_doc(pj, intent) or (None, None)
+    except ConflictMarkers as e:
+        print("%sCould not update aidlc-state.md: its merge conflict markers do not pair up (%s), so it was left as "
+              "it is. Fix them by hand (keep the Session notes; the part between the lean markers may take either "
+              "side, the next command rewrites it), then run `%s status`." % (prefix, e, TOOL))
+        return
     except Exception as e:  # noqa: BLE001
         print("%sCould not update aidlc-state.md (%s: %s)." % (prefix, type(e).__name__, e))
+        return
+    if note:
+        print(prefix + note)
 
 
 def strip_region(text):
@@ -2114,7 +2252,7 @@ def strip_region(text):
 
 
 NEXT_HEADING_RE = re.compile(r"(?im)^#{2,4}[ \t]*Next\b([^\n]*)$")
-TEAM_SUFFIX_RE = re.compile(r"(?i)^[ \t]*\([ \t]*team[ \t:]+`?([A-Za-z0-9_.-]+)`?[ \t]*\)")
+TEAM_SUFFIX_RE = re.compile(r"(?i)^[ \t]*\([ \t]*team[ \t:]+`?([\w.-]+)`?[ \t]*\)")
 
 
 def state_excerpt(pj, intent, max_lines=12):
@@ -2169,7 +2307,7 @@ def owner_team(pj, intent):
     aidlc-state.md (`new` writes it), else the team of the clone that ran `new`; None if unknown."""
     text = read_text(pj.doc(intent, STATE_DOC))
     head = re.split(r"(?m)^##[ \t]", text.split(BEGIN_MARK)[0], 1)[0]
-    m = re.search(r"(?im)^[ \t>*-]*\**[ \t]*Owner team[ \t]*\**[ \t]*[:：][ \t]*\**[ \t]*`?([A-Za-z0-9_.-]+)", head)
+    m = re.search(r"(?im)^[ \t>*-]*\**[ \t]*Owner team[ \t]*\**[ \t]*[:：][ \t]*\**[ \t]*`?([\w.-]+)", head)
     if m:
         return m.group(1)
     for e in pj.events():
@@ -2257,6 +2395,43 @@ def release_missing(pj, intent):
             and approval_key(e) not in listed]
 
 
+def release_stage_records(pj, intent):
+    """The intent's stage records that release.md's Stages section shows: every STAGE_STARTED, STAGE_COMPLETED,
+    STAGE_SKIPPED and PHASE_SKIPPED, except the Release stage's own and Build and Test's (verify records those; the
+    code fingerprint already ties release.md to the verified code)."""
+    return [e for e in pj.events() if e.get("intent") == intent and e.get("hash")
+            and (e.get("event") == "PHASE_SKIPPED" or (e.get("event") in STAGE_EVENTS and (e.get("data") or {}).get(
+                "stage") not in ("release", "build-and-test")))]
+
+
+def release_stale_records(pj, intent, written=None):
+    """The stage records recorded after the `lean release` run that wrote release.md (v0.3.1): its Stages section
+    does not show them, so release.md needs `lean release` again, as for a missing approval. Goes by the records
+    that run saw (their ledger hashes), not by the clocks of the clones. A run from before 0.3.1 kept no such list:
+    nothing counts as newer then."""
+    written = written or last_release_write(pj, intent)
+    seen = (written or {}).get("data", {}).get("stage_records")
+    if not isinstance(seen, list):
+        return []
+    seen = set(seen)
+    return [e for e in release_stage_records(pj, intent) if e["hash"][:16] not in seen]
+
+
+def stale_text(evs):
+    """'Operations skipped, CI Pipeline skipped' for release_stale_records."""
+    words = {"STAGE_STARTED": "started", "STAGE_COMPLETED": "done", "STAGE_SKIPPED": "skipped",
+             "PHASE_SKIPPED": "skipped"}
+    names = []
+    for e in evs:
+        d = e.get("data") or {}
+        st = STAGE_BY_ID.get(d.get("stage"))
+        name = PHASES.get(d.get("phase")) if e["event"] == "PHASE_SKIPPED" else (
+            (st.name if st else one_line(d.get("stage"), 60)) + (" (%s)" % one_line(d["unit"], 60) if d.get("unit")
+                                                                 else ""))
+        names.append("%s %s" % (name or "?", words[e["event"]]))
+    return ", ".join(names[-3:]) + (" and %d more" % (len(names) - 3) if len(names) > 3 else "")
+
+
 def missing_text(evs):
     """'REQUIREMENTS approved, CR-shop-1 approved' for release_missing."""
     return ", ".join("%s approved" % kind_label(e.get("data") or {}) for e in evs[-3:]) + (
@@ -2323,7 +2498,7 @@ def next_step(pj, intent, lv, current):
         if ev and ev["event"] == "STAGE_COMPLETED":
             continue
         owner = (info.get(u) or {}).get("owner") or ""
-        if mine and owner not in ("", "-", mine):
+        if mine and owner not in ("", "-") and team_key(owner) != team_key(mine):
             elsewhere.append("%s (team %s)" % (u, owner))
             continue
         plan = plans.get(u)
@@ -2381,7 +2556,8 @@ def next_step(pj, intent, lv, current):
     rel_s, _ = pj.approval_state(rel)
     written = last_release_write(pj, intent)
     for_this_code = written and written["data"].get("fingerprint") == pj.fingerprint()
-    if rel_s in ("draft", "stale", "rejected") and for_this_code and not release_missing(pj, intent):
+    missing, stale = (release_missing(pj, intent), release_stale_records(pj, intent, written)) if written else ([], [])
+    if rel_s in ("draft", "stale", "rejected") and for_this_code and not missing and not stale:
         wait = waiting_for(pj, rel)
         if wait:
             return wait
@@ -2392,7 +2568,8 @@ def next_step(pj, intent, lv, current):
     again = ""
     if os.path.exists(rel):
         again = (" (`request RELEASE` needs the release.md it writes)" if not written else
-                 " again (its Approvals table lacks newer approvals)" if for_this_code else
+                 " again (its Approvals table lacks newer approvals)" if for_this_code and missing else
+                 " again (its Stages section is older than %s)" % stale_text(stale) if for_this_code and stale else
                  " again (the code changed since it wrote release.md)")
     if review_is_current(pj, intent, lv):  # the review is written: what is left is the release record
         then = "run `%s release`%s; the review (%s) is newer than the last verify and code change" % (
@@ -2513,7 +2690,7 @@ def status_lines(pj, brief=False):
         me, pending, involved = team_key(pj.team()), [], []
         for p in pj.cr_files():
             f = pj.cr_fields(p)
-            if f["Owner team"] == pj.team() and pj.approval_state(p)[0] != "approved" and not pj.cr_closed(f["id"]):
+            if team_key(f["Owner team"]) == me and pj.approval_state(p)[0] != "approved" and not pj.cr_closed(f["id"]):
                 pending.append(f["id"])
             elif me in (team_key(f["Owner team"]), team_key(f["Requested by team"])):
                 state = pj.cr_state(p)
@@ -2671,7 +2848,8 @@ def hook_prompt(pj, payload):
     if HOST_PROMPT_RE.search(prompt):
         pj.append("HOST_TURN", {"session": session, "sha256": text_sha(prompt)}, intent)
         return 0
-    allow = bool(ALLOW_PROTECTED_RE.search(prompt))
+    lines = WIDE_SPACE_RE.sub(" ", prompt)  # what the approval, rejection and permission lines are read from
+    allow = bool(ALLOW_PROTECTED_RE.search(lines))
     with pj.state_lock():
         turn = pj.local_dict("turn.json")
         turn_no = (turn.get("n") or 0) + 1
@@ -2698,11 +2876,11 @@ def hook_prompt(pj, payload):
         msgs.append("Protected files (%s) may be edited during this turn only; each edit is logged."
                     % ", ".join(pj.cfg.get("protected_paths") or ["none configured"]))
     recorded = False  # an approval, rejection or refused approval went into the ledger: the Stage log shows it
-    for m in APPROVE_RE.finditer(prompt):
+    for m in APPROVE_RE.finditer(lines):
         msg, _ = record_approval(pj, intent, m.group(2), m.group(3), m.group(0).strip(), session)
         msgs.append(msg)
         recorded = True
-    near = None if APPROVE_RE.search(prompt) else NEAR_APPROVAL_RE.search(prompt)
+    near = None if APPROVE_RE.search(lines) else NEAR_APPROVAL_RE.search(lines)
     if near:
         msg = ("That message mentions an approval but is not one: type the approval alone on its own line, "
                "exactly as shown by `request` (e.g. `approve REQUIREMENTS 1a2b3c4d`).")
@@ -2710,7 +2888,7 @@ def hook_prompt(pj, payload):
             msg += (" There is no SPEC any more: the approvals are IDEATION (with Ideation), REQUIREMENTS, DESIGN (or "
                     "both together as INCEPTION), PLAN, RELEASE and CR-<team>-<n>.")
         msgs.append(msg)
-    for m in REJECT_RE.finditer(prompt):
+    for m in REJECT_RE.finditer(lines):
         kind = norm_kind(m.group(2))
         target, err = rejection_target(pj, intent, kind, m.group(3))
         if not target:
@@ -2756,6 +2934,12 @@ def record_approval(pj, intent, kind, given_hash, words, session):
         return "Approval of %s NOT recorded: %s" % (kind, reason), False
 
     target, err = approval_target(pj, intent, kind, given_hash=given_hash, approving=True)
+    if given_hash and not kind.startswith("CR-") and not (target and target["sha256"].startswith(given_hash.lower())):
+        other = other_intent_request(pj, intent, kind, given_hash)
+        if other:  # the human answers a request of the intent that was active before `new` or `use`
+            return refused("intent", "that line answers the %s request of intent %s, but the active intent is %s. "
+                           "Switch back first (`%s use %s`), then type the line again." % (
+                               kind, other, intent or "none", TOOL, other), target)
     if not target:
         return refused("target", "%s." % err)
     digest = target["sha256"]
@@ -2778,6 +2962,10 @@ def record_approval(pj, intent, kind, given_hash, words, session):
         if missing:
             return refused("release", "operations/release.md does not list %s: its Approvals table is out of date. "
                            "Ask for `%s release` and a fresh request." % (missing_text(missing), TOOL), target)
+        stale = release_stale_records(pj, intent, written)
+        if stale:
+            return refused("release", "operations/release.md was written before %s: its Stages section is out of "
+                           "date. Ask for `%s release` and a fresh request." % (stale_text(stale), TOOL), target)
     if kind in ("REQUIREMENTS", "INCEPTION"):  # Ideation in use: its hand-off comes before the requirements
         idea = requirements_ideation_problem(pj, intent)
         if idea:
@@ -2793,7 +2981,7 @@ def record_approval(pj, intent, kind, given_hash, words, session):
     data = dict(target_data(target), session=session, words=mask(words)[:500])
     if kind.startswith("CR-"):
         f = pj.cr_fields(os.path.join(pj.root, target["path"]))
-        if pj.cfg.get("multi_team") and f["Owner team"] and ident.get("team") != f["Owner team"]:
+        if pj.cfg.get("multi_team") and f["Owner team"] and team_key(ident.get("team")) != team_key(f["Owner team"]):
             return refused("team", "it needs someone from team %s (this clone is team %s)."
                            % (f["Owner team"], ident.get("team") or "not set"), target)
         data["owner_team"] = f["Owner team"]
@@ -2815,6 +3003,17 @@ def record_approval(pj, intent, kind, given_hash, words, session):
         what = ": the code-generation plan of unit %s" % target["unit"]
     return ("Recorded: %s approved (sha %s) by %s%s." % (kind, digest[:8], ident.get("git_email") or ident["os_user"],
                                                          what)), True
+
+
+def other_intent_request(pj, intent, kind, given_hash):
+    """The intent, other than the active one, whose last `request <kind>` printed this hash; None if none did."""
+    given = given_hash.lower()
+    for e in reversed(pj.events()):
+        d = e.get("data") or {}
+        if e.get("event") == "APPROVAL_REQUESTED" and e.get("intent") not in (None, intent) and \
+                d.get("kind") == kind and (d.get("sha256") or "").startswith(given):
+            return e["intent"]
+    return None
 
 
 def block(pj, gate, msg, intent, detail):
@@ -2867,7 +3066,7 @@ def guard_write(pj, intent, tool, r):
     contract = pj.is_contract(r)
     if contract and cfg.get("multi_team"):
         owner, me = pj.owner_of(r), pj.team()
-        if owner and owner != me and not pj.approved_cr_for(r, owner):
+        if owner and team_key(owner) != team_key(me) and not pj.approved_cr_for(r, owner):
             return block(pj, "contract", "%s belongs to team %s. Open a change request (`%s cr new <slug> --owner %s "
                          "--paths %s`) and wait for that team to approve it." % (r, owner, TOOL, owner, r), intent, d)
     if not contract and (r.startswith(DOCS + "/") or r.startswith(".kiro/") or matches(r, cfg.get("free_paths"))):
@@ -2895,7 +3094,7 @@ def guard_shell(pj, intent, cmd):
     # OWNERS as commands name it: under contracts_dir as configured, and under its resolved target
     owners_files = sorted({pj.cfg["contracts_dir"] + "/OWNERS", pj.contracts_real + "/OWNERS"})
     scan = without_note_values(cmd)  # for the records and mutation checks below; the rest look at cmd
-    if re.search(r"aidlc_lean\.py\S*\s+hook\b", scan) or touches_records(scan):
+    if re.search(r"aidlc_lean\.py\S*\s+hook\b", scan) or (touches_records(scan) and not read_only_line(scan)):
         return block(pj, "records", "commands may not touch %s/audit/, .aidlc-lean/, %s/lean.json or call the hook "
                      "entry point (staging and committing them with plain `git add`/`git commit` is fine)."
                      % (DOCS, DOCS), intent, d)
@@ -2919,13 +3118,13 @@ def guard_shell(pj, intent, cmd):
                              "themselves if it is really needed." % pat, intent, d)
         except re.error:
             continue
-    if re.search(r"\bgit\b[^|;&]*\bcommit\b", cmd) and "--dry-run" not in cmd:
+    if is_commit_line(scan):
         if not pj.cfg.get("checks"):
             if pj.cfg.get("regulated"):
                 return block(pj, "verify", "regulated mode needs checks in %s/lean.json before commits." % DOCS,
                              intent, d)
             return 0
-        if only_record_changes(pj):
+        if only_record_changes(pj, commit_paths(pj, scan)):
             return 0
         lv = pj.last_verify()
         if not lv or not lv["data"].get("ok") or lv["data"].get("fingerprint") != pj.fingerprint():
@@ -2941,6 +3140,46 @@ TOOL_RECORDS_SHELL = (r"aidlc-docs/(?:[^/\s'\"|;&<>]+/)?(?:audit\.md|constructio
                       r"(?:/build-and-test-summary\.md|/evidence\b|/?(?=[\s'\"]|$)))(?![\w.-])")
 
 
+# v0.3.1: a command line that only reads may name the record paths (`cat aidlc-docs/lean.json`, `tail` of a ledger):
+# every simple command on it is one of these programs with no redirection except from a file or to /dev/null, a git
+# inspect command, or this tool's own CLI naming no record path itself. Anything else on such a line, a pipe into
+# another program included, is checked as before; so is a line read_only_line cannot read exactly.
+READ_ONLY_PROGRAMS = frozenset(("cat", "head", "tail", "wc", "ls", "grep", "egrep", "fgrep", "jq", "stat", "diff",
+                                "cmp", "nl", "md5", "md5sum", "shasum", "sha256sum", "echo", "printf", "pwd", "cd",
+                                "true"))
+READ_ONLY_GIT = ("status", "log", "show", "diff", "ls-files", "blame")
+
+
+def read_only_line(cmd):
+    """True when every simple command of the line only reads (READ_ONLY_PROGRAMS): then naming a record path in it
+    is a read, not a change."""
+    cmds = shell_commands(cmd)
+    if not cmds:
+        return False
+    for toks in cmds:
+        words = [cmd[s:e] for s, e, w in toks if w]
+        if not toks[0][2] or cmd[toks[0][0]] in "'\"\\":  # starts with a redirection, or a quoted program name
+            return False
+        name = posixpath.basename(words[0])
+        if name == "git":
+            if len(words) < 2 or words[1] not in READ_ONLY_GIT or any(w.startswith("--output") for w in words):
+                return False
+        elif name in ("python3", "python") and len(words) > 2 and words[1] in TOOL_CALL[1]:
+            if words[2] == "hook" or RECORDS_RE.search(cmd[toks[0][0]:toks[-1][1]]):
+                return False  # this tool's own CLI, as long as it names no record path itself
+        elif name not in READ_ONLY_PROGRAMS:
+            return False
+        for k, (s, e, is_word) in enumerate(toks):
+            if is_word:
+                continue
+            op, nxt = cmd[s:e], toks[k + 1] if k + 1 < len(toks) else None
+            target = cmd[nxt[0]:nxt[1]] if nxt and nxt[2] else None
+            if not target or not (op == "<" or (op in (">", ">>", "&>", "&>>", ">|", ">&") and target == "/dev/null")
+                                  or (op == ">&" and target.isdigit())):
+                return False
+    return True
+
+
 def touches_records(cmd):
     """True unless every command segment that names a record path is a plain git stage/inspect command."""
     for seg in re.split(r"&&|\|\||[;|\n]", cmd):
@@ -2950,6 +3189,118 @@ def touches_records(cmd):
             continue
         return True
     return False
+
+
+# git's global options that take the next word as their value (`git -C <dir> commit`)
+GIT_VALUE_OPTIONS = ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env")
+
+
+def shell_word(text):
+    """One word of a command line as the shell passes it on (quotes and backslashes removed); the text itself
+    when shlex cannot read it."""
+    try:
+        return "".join(shlex.split(text))
+    except ValueError:
+        return text
+
+
+def git_calls(cmd, depth=0):
+    """[(subcommand, args)] of the git calls on a shell command line, in order: every `git` word with git's global
+    options after it skipped (`git -C dir commit`, `env X=1 git commit`), also inside a word that is itself a script
+    (`sh -c "git commit ..."`, `eval '...'`). None when the line holds what shell_commands cannot read exactly."""
+    cmds = shell_commands(cmd)
+    if cmds is None:
+        return None
+    out = []
+    for toks in cmds:
+        words = [shell_word(cmd[s:e]) for s, e, is_word in toks if is_word]
+        for j, w in enumerate(words):
+            if posixpath.basename(w) == "git":
+                k = j + 1
+                while k < len(words) and words[k].startswith("-") and words[k] != "--":
+                    k += 2 if words[k] in GIT_VALUE_OPTIONS else 1
+                if k < len(words):
+                    out.append((words[k], words[k + 1:]))
+            elif depth < 3 and re.search(r"\s", w) and re.search(r"\bgit\b", w):
+                inner = git_calls(w, depth + 1)
+                if inner is None:
+                    return None
+                out += inner
+    return out
+
+
+# `git commit` options that take the next word as their value (`-m msg`; `-m"msg"` and `--message=msg` hold it)
+COMMIT_VALUE_SHORT = "mFCct"
+COMMIT_VALUE_LONG = ("--message", "--file", "--reuse-message", "--reedit-message", "--template", "--author", "--date",
+                     "--fixup", "--squash", "--cleanup", "--trailer")
+
+
+def commit_paths(pj, cmd):
+    """The paths (project-relative) a commit command line commits: what is staged now, plus the changes under
+    the paths each `git add <paths>` on the line names. None when that cannot be told exactly; the commit gate then
+    looks at the whole working tree. That is the case for a line shell_commands cannot read, a command on it other
+    than git and the read-only programs (`cd` included), git's global options (-C, --git-dir), `git add` without
+    paths or with options (-A, -u, ...), `git commit` with -a, -i, -o, -p or paths, and other git commands that
+    change the index or the files (rm, mv, stash, reset, ...)."""
+    cmds = shell_commands(cmd)
+    if cmds is None:
+        return None
+    specs = []
+    for toks in cmds:
+        words = [shell_word(cmd[s:e]) for s, e, is_word in toks if is_word]
+        if not words or posixpath.basename(words[0]) in ("echo", "true", "printf", "pwd"):
+            continue
+        if posixpath.basename(words[0]) != "git" or len(words) < 2 or words[1].startswith("-"):
+            return None
+        sub, args = words[1], words[2:]
+        if sub in ("status", "diff", "log", "show", "ls-files", "blame"):
+            continue
+        if sub == "add":
+            opts = [a for a in args if a.startswith("-")]
+            if any(a not in ("--", "-v", "--verbose") for a in opts) or len(opts) == len(args):
+                return None
+            specs += [a for a in args if not a.startswith("-")]
+            continue
+        if sub != "commit":
+            return None
+        k = 0
+        while k < len(args):
+            a = args[k]
+            if a == "--":
+                if args[k + 1:]:
+                    return None  # paths: the commit holds their working-tree content
+                break
+            if a.startswith("--"):
+                name = a.split("=", 1)[0]
+                if name in ("--all", "--include", "--only", "--interactive", "--patch", "--pathspec-from-file"):
+                    return None
+                if "=" not in a and name in COMMIT_VALUE_LONG:
+                    k += 1
+            elif a.startswith("-") and len(a) > 1:
+                for n, ch in enumerate(a[1:]):
+                    if ch in "aiop":
+                        return None
+                    if ch in COMMIT_VALUE_SHORT:
+                        k += 1 if n == len(a) - 2 else 0  # the value is the next word, or the rest of this one
+                        break
+            else:
+                return None  # a path
+            k += 1
+    staged = git_paths(pj, ["diff", "--cached", "--name-only", "-z", "--no-renames"])
+    added = changed_paths(pj, every_untracked=True, specs=specs) if specs else []
+    if staged is None or added is None:
+        return None
+    return sorted(set(staged) | set(added))
+
+
+def is_commit_line(cmd):
+    """Does the command line run `git commit` (not with --dry-run)? Read with its quoting, so `git log --format
+    '... commit'`, `git merge --no-commit` and `git stash -m 'before commit'` are no commits. A line that
+    shell_commands cannot read exactly ($, backticks, a here-document) counts when it names git and commit."""
+    calls = git_calls(cmd)
+    if calls is None:
+        return bool(re.search(r"\bgit\b[^|;&]*\bcommit\b", cmd)) and "--dry-run" not in cmd
+    return any(sub == "commit" and "--dry-run" not in args for sub, args in calls)
 
 
 NOTE_OPTIONS = ("--note", "--reason", "--title")
@@ -3051,11 +3402,13 @@ def mutates_re(cmd, p):
         r"|\bgit\s+(checkout|restore|rm|mv|apply)\b[^|;&]*%s|\bpython3?\b[^|;&]*%s[^|;&]*open\()" % (p, p, p, p, p), cmd))
 
 
-def changed_paths(pj, every_untracked=False):
+def changed_paths(pj, every_untracked=False, specs=None):
     """Paths in `git status --porcelain -z`, relative to the project root, or None if git fails.
     Output is parsed unstripped (the first entry may start with a space, e.g. ' M path'), and a rename or
-    copy lists both its new and its old path. every_untracked: each untracked file, not just its folder."""
-    cmd = ["git", "status", "--porcelain", "-z"] + (["--untracked-files=all"] if every_untracked else [])
+    copy lists both its new and its old path. every_untracked: each untracked file, not just its folder. specs:
+    only the changes under these paths (as a command in the project folder names them)."""
+    cmd = ["git", "status", "--porcelain", "-z"] + (["--untracked-files=all"] if every_untracked else []) + (
+        ["--"] + list(specs) if specs else [])
     try:
         p = subprocess.run(cmd, cwd=pj.root, capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
@@ -3073,16 +3426,34 @@ def changed_paths(pj, every_untracked=False):
             if i < len(fields) and fields[i]:
                 paths.append(os.fsdecode(fields[i]))
             i += 1
-    # porcelain paths are relative to the git top level; the project may be a subfolder of it (monorepo).
-    # Paths outside the project never count as records.
+    return project_relative(pj, paths)
+
+
+def project_relative(pj, paths):
+    """git's paths are relative to the git top level; the project may be a subfolder of it (monorepo). Paths
+    outside the project never count as records."""
     _, prefix = run(["git", "rev-parse", "--show-prefix"], pj.root)
     if prefix:
         paths = [x[len(prefix):] if x.startswith(prefix) else "../" + x for x in paths]
     return paths
 
 
-def only_record_changes(pj):
-    paths = changed_paths(pj)
+def git_paths(pj, args):
+    """The NUL-separated paths a git command prints (e.g. `diff --cached --name-only -z`), project-relative, or
+    None if git fails."""
+    try:
+        p = subprocess.run(["git"] + args, cwd=pj.root, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    return project_relative(pj, [os.fsdecode(f) for f in p.stdout.split(b"\0") if f])
+
+
+def only_record_changes(pj, paths=None):
+    """Does the commit hold records only (README: such commits need no verify)? paths: what it commits
+    (commit_paths); None: the whole working tree counts."""
+    paths = changed_paths(pj) if paths is None else paths
     return bool(paths) and all(pj.is_record_path(p) for p in paths)
 
 
@@ -3149,6 +3520,17 @@ def cmd_init(pj, args):
         cfg["multi_team"] = "--multi-team" in args
         write_text(cfg_path, json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
         print("Created %s/lean.json" % DOCS)
+    else:  # init never changes an existing lean.json: say so instead of leaving a mode flag silently unused
+        flags = (("regulated", "--regulated"), ("multi_team", "--multi-team"))
+        skipped = [flag for key, flag in flags if flag in args and not pj.cfg.get(key)]
+        if skipped:
+            print("WARNING: %s/lean.json already exists, so it was kept as it is (%s): %s was NOT applied. To change "
+                  "the mode, a person edits \"regulated\" / \"multi_team\" in %s/lean.json and commits it." % (
+                      DOCS, ", ".join("%s: %s" % (k, "true" if pj.cfg.get(k) else "false") for k, _ in flags),
+                      " and ".join(skipped), DOCS))
+            if "--multi-team" in skipped:
+                print("  For multi-team, then run `%s init --team NAME` so it creates %s/OWNERS." % (
+                    TOOL, pj.cfg["contracts_dir"].rstrip("/")))
     pj = Project(pj.root)
     os.makedirs(pj.ledger_dir(), exist_ok=True)
     if pj.cfg.get("multi_team"):
@@ -3159,13 +3541,13 @@ def cmd_init(pj, args):
         os.makedirs(os.path.join(pj.root, cdir, "changes"), exist_ok=True)
     team = before = None
     if "--team" in args and args.index("--team") + 1 < len(args):
-        team = re.sub(r"[^A-Za-z0-9_]", "_", args[args.index("--team") + 1])
+        team = args[args.index("--team") + 1].strip()  # kept as written; compared through team_key
         before = pj.local_dict("local.json").get("team")
         pj.local_put("local.json", {"team": team})
     gi = os.path.join(pj.root, ".gitignore")
-    if ".aidlc-lean/" not in read_text(gi):
-        with open(gi, "a", encoding="utf-8") as f:
-            f.write("\n# AI-DLC Lean local state (per clone)\n.aidlc-lean/\n")
+    if b".aidlc-lean/" not in read_bytes(gi):  # bytes, as install.sh's check reads it: any encoding will do
+        with open(gi, "ab") as f:
+            f.write(b"\n# AI-DLC Lean local state (per clone)\n.aidlc-lean/\n")
     data = {"version": VERSION, "regulated": pj.cfg.get("regulated"), "multi_team": pj.cfg.get("multi_team")}
     if team:
         data["team"] = team
@@ -3186,10 +3568,14 @@ def cmd_new(pj, args):
     opts, err = parse_opts(args[1:], ("--title",)) if args and not args[0].startswith("--") else (None, "")
     slug = re.sub(r"[^a-z0-9-]+", "-", args[0].lower()).strip("-") if opts is not None else ""
     if not slug:
+        if opts is not None:  # a name was given, with no letter or digit a folder name can use (`new 退款`)
+            print("Cannot start an intent named `%s`: the intent name names its folder: use a-z, 0-9 and - (e.g. "
+                  "`new refunds`); a title in any language goes in --title (e.g. `new refunds --title \"%s\"`)."
+                  % (args[0], opts.get("--title") or args[0]))
         print("usage: new <slug> [--title T] [--ideation]%s" % ("  (%s)" % err if err else ""))
         return 1
     title = opts.get("--title") or slug.replace("-", " ")
-    intent = datetime.now().strftime("%y%m%d") + "-" + slug
+    intent = now()[2:10].replace("-", "") + "-" + slug  # the UTC date, as Created and every recorded date
     if os.path.exists(pj.doc(intent)):
         print("Intent exists: %s/%s" % (DOCS, intent))
         return 1
@@ -3359,6 +3745,12 @@ def cmd_stage(pj, args):
     label = st.name + (" (%s)" % unit if unit else "")
     unit_arg = " --unit %s" % unit if unit else ""
     if action == "start":
+        ev = stage_event(pj, intent, st, unit)
+        if ev and ev["event"] == "STAGE_STARTED" and os.path.exists(path):  # v0.3.1: no second record
+            print("Kept the existing %s. %s is already in progress (started %s; nothing new recorded). When it is "
+                  "done: `%s stage done %s%s --note \"<what was done: inputs used, what it produced, key decisions>\"`."
+                  % (r, label, when(ev["ts"]), TOOL, st.id, unit_arg))
+            return 0
         created = not os.path.exists(path) and create_new(path, template(st.template, **doc_vars(pj, intent, st, unit)))
         pj.append("STAGE_STARTED", {"stage": st.id, "unit": unit, "path": r, "created": created}, intent)
         refresh_state_doc(pj, intent)
@@ -3500,6 +3892,9 @@ def cmd_request(pj, args):
         elif not problems and release_missing(pj, intent):
             problems.append("operations/release.md does not list %s (run `%s release` again)" % (
                 missing_text(release_missing(pj, intent)), TOOL))
+        elif not problems and release_stale_records(pj, intent, written):
+            problems.append("operations/release.md was written before %s: its Stages section is out of date (run "
+                            "`%s release` again)" % (stale_text(release_stale_records(pj, intent, written)), TOOL))
         if problems:
             print("Cannot request RELEASE: not ready to release: %s." % "; ".join(problems))
             return 1
@@ -3526,6 +3921,9 @@ def cmd_request(pj, args):
         voids = "Any later change to %s voids the approval." % ("either file" if len(files) > 1 else "the file")
     print("Ask %s to read %s and, if they agree, type exactly:\n\n    approve %s %s\n\nor `%s`. %s" % (
         who, " and ".join(files), kind, digest[:8], reject, voids))
+    only = approvers_text(pj, target)
+    if only:
+        print(only + ".")
     if intent and not kind.startswith("CR-"):
         if session_notes_untouched(pj, intent):
             print("Reminder: the Session notes in %s/%s/%s are still the template: update the Session notes before "
@@ -3574,8 +3972,8 @@ def cmd_verify(pj, args):
     results, ok = [], True
     for c in checks:
         t0 = time.time()
-        try:
-            p = subprocess.run(c, shell=True, cwd=pj.root, capture_output=True, text=True,
+        try:  # output that is not UTF-8 (a GBK source line, raw bytes) is decoded with replacements, never fatal
+            p = subprocess.run(c, shell=True, cwd=pj.root, capture_output=True, text=True, errors="replace",
                                timeout=pj.cfg.get("check_timeout_sec", 1800))
             code, out = p.returncode, (p.stdout + p.stderr)
         except subprocess.TimeoutExpired as e:
@@ -3670,7 +4068,7 @@ def cmd_cr(pj, args):
     if not opts or not opts.get("--owner") or not opts.get("--paths"):
         print(usage + ("  (%s)" % err if err else ""))
         return 1
-    me = re.sub(r"[^A-Za-z0-9_]", "_", pj.team() or "unknown")
+    me = team_key(pj.team() or "unknown")  # the CR id: CR-<team_key>-<n>
     owner, paths = opts["--owner"], opts["--paths"]
     d = os.path.join(pj.root, pj.cfg["contracts_dir"], "changes")
     os.makedirs(d, exist_ok=True)
@@ -3678,7 +4076,8 @@ def cmd_cr(pj, args):
     cid = "CR-%s-%d" % (me, n)
     slug = re.sub(r"[^a-z0-9-]+", "-", args[1].lower()).strip("-") or "change"
     path = os.path.join(d, "%s-%s.md" % (cid, slug))
-    write_text(path, template("cr.md", ID=cid, TITLE=slug.replace("-", " "), FROM=me, OWNER=owner, PATHS=paths,
+    write_text(path, template("cr.md", ID=cid, TITLE=slug.replace("-", " "), FROM=pj.team() or "unknown", OWNER=owner,
+                              PATHS=paths,
                               DATE=now()[:10]))
     pj.append("CR_OPENED", {"id": cid, "owner_team": owner, "paths": paths.split(",")}, pj.active())
     print("Created %s. Fill it in, then `%s request %s` for team %s." % (rel(pj.root, path), TOOL, cid, owner))
@@ -3766,7 +4165,9 @@ def cmd_release(pj, args):
     path = pj.doc(intent, RELEASE_DOC)
     write_text(path, "\n".join(body) + "\n")
     pj.append("STAGE_STARTED", {"stage": "release", "unit": None, "path": rel(pj.root, path),
-                                "sha256": sha256_file(path), "fingerprint": fp, "head": head}, intent)
+                                "sha256": sha256_file(path), "fingerprint": fp, "head": head,
+                                "stage_records": [e["hash"][:16] for e in release_stage_records(pj, intent)]},
+              intent)
     refresh_state_doc(pj, intent)
     if not checks:
         print("Warning: no checks are configured in %s/lean.json, so nothing was verified; release.md says so." % DOCS)

@@ -655,6 +655,17 @@ class VendorPstack(unittest.TestCase):
             self.assertIn("blast-radius: the upstream text for an edit is gone", p.stderr)
             self.assert_pack_unchanged()
 
+    def test_r1_120_every_upstream_text_that_is_gone_is_listed_at_once(self):
+        self.edit("skills/blast-radius/SKILL.md", "run it as an `arena`", "run it as an `arena` round")
+        self.edit("skills/correct/SKILL.md", "Use for /correct.", "Use it for /correct.")
+        self.edit("skills/interrogate/references/rubric.md", "(Read, Grep, Glob)", "(Read, Grep and Glob)")
+        p = self.vendor(self.up)
+        self.assertEqual(p.returncode, 1, p.stdout)
+        for label in ("blast-radius", "correct", "rubric.md"):
+            self.assertIn("\n  %s: the upstream text for an edit is gone" % label, p.stderr)
+        self.assertIn("update the edit tables in tools/vendor_pstack.py; kit-pstack/ was not changed", p.stderr)
+        self.assert_pack_unchanged()
+
     def test_every_output_file_is_scanned_including_references(self):
         self.append("skills/interrogate/references/lead-judgment.md",
                     "\nAsk `arena` or **show-me-your-work**, then use (Read, Grep, Glob) as in Claude Code.\n")
