@@ -38,5 +38,92 @@ class VerifyBytes(Fix31):
         self.assertTrue(self.events("VERIFY")[-1]["data"]["ok"])
 
 
+# ---------------------------------------------------------------- R1-107: team names with -, . or Chinese
+class TeamNames(Fix31):
+    flags = ["--multi-team", "--team", "web-team"]
+    own = "aidlc-docs/contracts/web-team/api.yaml"
+    other = "aidlc-docs/contracts/catalog/items.yaml"
+
+    def setUp(self):
+        super().setUp()
+        self.put("aidlc-docs/contracts/OWNERS",
+                 "aidlc-docs/contracts/web-team/** web-team\naidlc-docs/contracts/catalog/** catalog\n")
+
+    def inception(self):
+        """An approved intent with unit api (team web-team, this clone) and unit web (team catalog)."""
+        i = self.intent()
+        self.requirements(i, "large")
+        self.design(i)
+        self.units(i, [("api", "web-team", "src/api/, aidlc-docs/contracts/web-team/**"),
+                       ("web", "catalog", "src/web/")])
+        self.ok("stage", "done", "units", "--note", "api, web")
+        for sid in ("reverse-engineering", "user-stories"):
+            self.ok("stage", "skip", sid, "--reason", "not needed")
+        out, _ = self.approve("INCEPTION")
+        self.assertIn("Recorded: INCEPTION approved", out.stdout)
+        return i
+
+    def test_r1_107_a_hyphenated_team_keeps_its_name_its_contract_its_unit_and_its_crs(self):
+        self.assertEqual(self.read(".aidlc-lean/local.json").count('"web-team"'), 1)  # kept as written
+        self.assertIn("multi-team (this clone: team web-team)", self.status())
+        self.inception()
+        self.assertEqual(self.write(self.own, "openapi: 3.0.0\n").returncode, 0)  # its own contract: no CR
+        self.assertIn("Next: unit api: record its design stages first", self.status())  # its own unit
+        self.assertNotIn("wait for unit api", self.status())
+        self.assertEqual(self.write(self.other, "x: 1\n").returncode, 2)
+        p = self.ok("cr", "new", "items", "--owner", "catalog", "--paths", self.other)
+        self.assertIn("CR-web_team-1", p.stdout)  # the CR id keeps to letters, digits and _
+        self.assertIn("- Requested by team: web-team", self.read("aidlc-docs/contracts/changes/CR-web_team-1-items.md"))
+        out, _ = self.approve("CR-web_team-1", team="catalog")
+        self.assertIn("Recorded: CR-web_team-1 approved", out.stdout)
+        self.assertEqual(self.write(self.other, "x: 1\n").returncode, 0)  # unlocked for the requesting team
+        self.ok("cr", "new", "api-field", "--owner", "web-team", "--paths", self.own, team="catalog")
+        out, _ = self.approve("CR-catalog-1")  # this clone (web-team) owns the contract: it approves
+        self.assertIn("Recorded: CR-catalog-1 approved", out.stdout)
+        self.assertEqual(self.write(self.own, "openapi: 3.1.0\n", team="catalog").returncode, 0)
+        self.assertIn("Change requests involving your team: CR-catalog-1 (open, approved), CR-web_team-1 (open, "
+                      "approved)", self.status())
+
+    def test_r1_107_the_environment_variable_and_init_team_agree(self):
+        os.remove(os.path.join(self.dir, ".aidlc-lean", "local.json"))
+        self.inception()
+        for team in ("web-team", "web_team", "web.team"):  # -, . and _ name the same team
+            self.assertEqual(self.write(self.own, "openapi: 3.0.0\n", team=team).returncode, 0, team)
+            self.assertIn("Next: unit api: record its design stages first", self.tool("status", team=team).stdout)
+        self.assertEqual(self.write(self.own, "openapi: 3.0.0\n", team="webteam").returncode, 2)
+
+
+class TeamNamesChinese(Fix31):
+    flags = ["--multi-team", "--team", "支付"]
+    pay = "aidlc-docs/contracts/pay/api.yaml"
+
+    def test_r1_107_chinese_team_names_stay_apart(self):
+        self.assertIn('"支付"', self.read(".aidlc-lean/local.json"))
+        self.put("aidlc-docs/contracts/OWNERS", "aidlc-docs/contracts/pay/** 支付\naidlc-docs/contracts/order/** 订单\n")
+        i = self.intent()
+        self.requirements(i, "large")
+        self.design(i)
+        self.units(i, [("api", "支付", "src/api/"), ("web", "订单", "src/web/")])
+        self.ok("stage", "done", "units", "--note", "api, web")
+        for sid in ("reverse-engineering", "user-stories"):
+            self.ok("stage", "skip", sid, "--reason", "not needed")
+        self.approve("INCEPTION")
+        self.assertIn("Owner team: 支付", self.state(i))
+        self.assertEqual(self.write(self.pay, "openapi: 3.0.0\n").returncode, 0)
+        self.assertEqual(self.write(self.pay, "openapi: 3.0.0\n", team="订单").returncode, 2)  # another team
+        self.assertIn("Next: unit api: record its design stages first", self.status())  # its own unit
+        self.assertIn("Next: unit web: record its design stages first", self.tool("status", team="订单").stdout)
+        p = self.ok("cr", "new", "refund-field", "--owner", "支付", "--paths", self.pay, team="订单")
+        self.assertIn("CR-订单-1", p.stdout)
+        out, _ = self.approve("CR-订单-1", team="订单")  # the requesting team cannot approve it
+        self.assertIn("it needs someone from team 支付 (this clone is team 订单)", out.stdout)
+        out, _ = self.approve("CR-订单-1")
+        self.assertIn("Recorded: CR-订单-1 approved", out.stdout)
+        self.assertEqual(self.write(self.pay, "openapi: 3.1.0\n", team="订单").returncode, 0)
+        self.assertEqual(self.write(self.pay, "openapi: 3.1.0\n", team="物流").returncode, 2)
+        p = self.ok("init", "--team", "订单")
+        self.assertIn("is now team 订单 (was 支付)", p.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

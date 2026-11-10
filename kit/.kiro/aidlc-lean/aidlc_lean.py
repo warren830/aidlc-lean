@@ -237,7 +237,7 @@ APPROVAL_KINDS = ("IDEATION", "REQUIREMENTS", "DESIGN", "INCEPTION", "PLAN", "RE
 
 READ_TOOL_RE = re.compile(r"(read|list|glob|grep|search|fetch|view|thinking|todo|report|load|disclose|subagent_response)", re.I)
 SHELL_TOOLS = {"execute_bash", "execute_pwsh", "execute_cmd", "shell", "bash", "run_command"}
-KIND_RE = r"IDEATION|REQUIREMENTS|DESIGN|INCEPTION|PLAN|RELEASE|CR-[A-Za-z0-9_]+-\d+"
+KIND_RE = r"IDEATION|REQUIREMENTS|DESIGN|INCEPTION|PLAN|RELEASE|CR-\w+-\d+"  # CR-<team_key>-<n>
 APPROVE_RE = re.compile(  # the whole line must be the approval, so "approve design after X" does not count
     r"(?im)^[ \t]*(approve|approved|批准|同意)[ \t]*[:：]?[ \t]*(" + KIND_RE + r")"
     r"(?:[ \t]+([0-9a-fA-F]{6,64}))?[ \t]*(\(via[^)\n]{1,200}\))?[ \t]*[.!。！]?[ \t]*$")
@@ -606,8 +606,10 @@ def norm_kind(kind):
 
 
 def team_key(name):
-    """A team name as `init --team` and `cr new` write it (letters, digits and _); '' for none."""
-    return re.sub(r"[^A-Za-z0-9_]", "_", str(name or "").strip("`* \t"))
+    """A team name as the tool compares it, and as CR ids hold it: letters (any script), digits and _, every other
+    character read as _ (`web-team`, `web.team` and `web_team` are one team); '' for none. Names are kept as
+    written (`init --team`, AIDLC_LEAN_TEAM, OWNERS, unit-of-work.md, CRs); every comparison goes through this."""
+    return re.sub(r"[^\w]", "_", str(name or "").strip("`* \t"))
 
 
 def parse_opts(args, allowed):
@@ -1364,7 +1366,7 @@ class Project:
             m = re.search(r"(?im)^\s*[-*]?\s*%s\s*:\s*(.+)$" % re.escape(key), text)
             f[key] = m.group(1).strip() if m else ""
         f["paths"] = [p.strip() for p in f["Paths"].split(",") if p.strip()]
-        m = re.match(r"(CR-[A-Za-z0-9_]+-\d+)(-|\.md)", os.path.basename(path))
+        m = re.match(r"(CR-\w+-\d+)(-|\.md)", os.path.basename(path))
         f["id"] = m.group(1) if m else os.path.basename(path)[:-3]
         return f
 
@@ -1384,7 +1386,8 @@ class Project:
             if not self.contract_match(relpath, f["paths"]) or not me or team_key(f["Requested by team"]) != me:
                 continue
             status, ev = self.approval_state(path)
-            if status == "approved" and (ev["actor"].get("team") == owner) and not self.cr_closed(f["id"]):
+            if status == "approved" and team_key(ev["actor"].get("team")) == team_key(owner) \
+                    and not self.cr_closed(f["id"]):
                 return f["id"]
         return None
 
@@ -2114,7 +2117,7 @@ def strip_region(text):
 
 
 NEXT_HEADING_RE = re.compile(r"(?im)^#{2,4}[ \t]*Next\b([^\n]*)$")
-TEAM_SUFFIX_RE = re.compile(r"(?i)^[ \t]*\([ \t]*team[ \t:]+`?([A-Za-z0-9_.-]+)`?[ \t]*\)")
+TEAM_SUFFIX_RE = re.compile(r"(?i)^[ \t]*\([ \t]*team[ \t:]+`?([\w.-]+)`?[ \t]*\)")
 
 
 def state_excerpt(pj, intent, max_lines=12):
@@ -2169,7 +2172,7 @@ def owner_team(pj, intent):
     aidlc-state.md (`new` writes it), else the team of the clone that ran `new`; None if unknown."""
     text = read_text(pj.doc(intent, STATE_DOC))
     head = re.split(r"(?m)^##[ \t]", text.split(BEGIN_MARK)[0], 1)[0]
-    m = re.search(r"(?im)^[ \t>*-]*\**[ \t]*Owner team[ \t]*\**[ \t]*[:：][ \t]*\**[ \t]*`?([A-Za-z0-9_.-]+)", head)
+    m = re.search(r"(?im)^[ \t>*-]*\**[ \t]*Owner team[ \t]*\**[ \t]*[:：][ \t]*\**[ \t]*`?([\w.-]+)", head)
     if m:
         return m.group(1)
     for e in pj.events():
@@ -2323,7 +2326,7 @@ def next_step(pj, intent, lv, current):
         if ev and ev["event"] == "STAGE_COMPLETED":
             continue
         owner = (info.get(u) or {}).get("owner") or ""
-        if mine and owner not in ("", "-", mine):
+        if mine and owner not in ("", "-") and team_key(owner) != team_key(mine):
             elsewhere.append("%s (team %s)" % (u, owner))
             continue
         plan = plans.get(u)
@@ -2513,7 +2516,7 @@ def status_lines(pj, brief=False):
         me, pending, involved = team_key(pj.team()), [], []
         for p in pj.cr_files():
             f = pj.cr_fields(p)
-            if f["Owner team"] == pj.team() and pj.approval_state(p)[0] != "approved" and not pj.cr_closed(f["id"]):
+            if team_key(f["Owner team"]) == me and pj.approval_state(p)[0] != "approved" and not pj.cr_closed(f["id"]):
                 pending.append(f["id"])
             elif me in (team_key(f["Owner team"]), team_key(f["Requested by team"])):
                 state = pj.cr_state(p)
@@ -2793,7 +2796,7 @@ def record_approval(pj, intent, kind, given_hash, words, session):
     data = dict(target_data(target), session=session, words=mask(words)[:500])
     if kind.startswith("CR-"):
         f = pj.cr_fields(os.path.join(pj.root, target["path"]))
-        if pj.cfg.get("multi_team") and f["Owner team"] and ident.get("team") != f["Owner team"]:
+        if pj.cfg.get("multi_team") and f["Owner team"] and team_key(ident.get("team")) != team_key(f["Owner team"]):
             return refused("team", "it needs someone from team %s (this clone is team %s)."
                            % (f["Owner team"], ident.get("team") or "not set"), target)
         data["owner_team"] = f["Owner team"]
@@ -2867,7 +2870,7 @@ def guard_write(pj, intent, tool, r):
     contract = pj.is_contract(r)
     if contract and cfg.get("multi_team"):
         owner, me = pj.owner_of(r), pj.team()
-        if owner and owner != me and not pj.approved_cr_for(r, owner):
+        if owner and team_key(owner) != team_key(me) and not pj.approved_cr_for(r, owner):
             return block(pj, "contract", "%s belongs to team %s. Open a change request (`%s cr new <slug> --owner %s "
                          "--paths %s`) and wait for that team to approve it." % (r, owner, TOOL, owner, r), intent, d)
     if not contract and (r.startswith(DOCS + "/") or r.startswith(".kiro/") or matches(r, cfg.get("free_paths"))):
@@ -3159,7 +3162,7 @@ def cmd_init(pj, args):
         os.makedirs(os.path.join(pj.root, cdir, "changes"), exist_ok=True)
     team = before = None
     if "--team" in args and args.index("--team") + 1 < len(args):
-        team = re.sub(r"[^A-Za-z0-9_]", "_", args[args.index("--team") + 1])
+        team = args[args.index("--team") + 1].strip()  # kept as written; compared through team_key
         before = pj.local_dict("local.json").get("team")
         pj.local_put("local.json", {"team": team})
     gi = os.path.join(pj.root, ".gitignore")
@@ -3670,7 +3673,7 @@ def cmd_cr(pj, args):
     if not opts or not opts.get("--owner") or not opts.get("--paths"):
         print(usage + ("  (%s)" % err if err else ""))
         return 1
-    me = re.sub(r"[^A-Za-z0-9_]", "_", pj.team() or "unknown")
+    me = team_key(pj.team() or "unknown")  # the CR id: CR-<team_key>-<n>
     owner, paths = opts["--owner"], opts["--paths"]
     d = os.path.join(pj.root, pj.cfg["contracts_dir"], "changes")
     os.makedirs(d, exist_ok=True)
@@ -3678,7 +3681,8 @@ def cmd_cr(pj, args):
     cid = "CR-%s-%d" % (me, n)
     slug = re.sub(r"[^a-z0-9-]+", "-", args[1].lower()).strip("-") or "change"
     path = os.path.join(d, "%s-%s.md" % (cid, slug))
-    write_text(path, template("cr.md", ID=cid, TITLE=slug.replace("-", " "), FROM=me, OWNER=owner, PATHS=paths,
+    write_text(path, template("cr.md", ID=cid, TITLE=slug.replace("-", " "), FROM=pj.team() or "unknown", OWNER=owner,
+                              PATHS=paths,
                               DATE=now()[:10]))
     pj.append("CR_OPENED", {"id": cid, "owner_team": owner, "paths": paths.split(",")}, pj.active())
     print("Created %s. Fill it in, then `%s request %s` for team %s." % (rel(pj.root, path), TOOL, cid, owner))

@@ -364,7 +364,7 @@ hook 是 Kiro 在会话开始、你发消息、AI 调用工具前自动跑的脚
 
 **多团队**（`--multi-team --team X`）：
 
-- 每个 clone（每人本机的一份仓库）由人设自己的团队：`lean init --team <名字>`，或者环境变量 `AIDLC_LEAN_TEAM`；
+- 每个 clone（每人本机的一份仓库）由人设自己的团队：`lean init --team <名字>`，或者环境变量 `AIDLC_LEAN_TEAM`。名字照写的保存，可以带 `-`、`.`，也可以用中文；比较团队时 `-`、`.` 和 `_` 算一样（`web-team` 和 `web_team` 是同一个团队），CR 编号里写成 `_`（`CR-web_team-1`）；
 - `inception/application-design/unit-of-work.md` 列出每个单元：名字、归哪个团队、代码路径、依赖谁、用到哪些契约。每个团队在自己的 clone 里做自己的单元。`lean status` 的"下一步"只提本团队的单元，轮到别的团队时会说在等哪个单元；
 - `aidlc-docs/contracts/OWNERS` 写明每个契约归哪个团队，由人维护；
 - 每个 intent 有一个归属团队（Owner team，就是发起它的团队），写在 aidlc-state.md 开头。评审和发布由它来做；别的团队做完自己的单元推上去就行。产品经理用 `--ideation` 开的 intent，由人把那一行改成负责发布的团队；
