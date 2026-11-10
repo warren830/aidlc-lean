@@ -3268,9 +3268,9 @@ def cmd_init(pj, args):
         before = pj.local_dict("local.json").get("team")
         pj.local_put("local.json", {"team": team})
     gi = os.path.join(pj.root, ".gitignore")
-    if ".aidlc-lean/" not in read_text(gi):
-        with open(gi, "a", encoding="utf-8") as f:
-            f.write("\n# AI-DLC Lean local state (per clone)\n.aidlc-lean/\n")
+    if b".aidlc-lean/" not in read_bytes(gi):  # bytes, as install.sh's check reads it: any encoding will do
+        with open(gi, "ab") as f:
+            f.write(b"\n# AI-DLC Lean local state (per clone)\n.aidlc-lean/\n")
     data = {"version": VERSION, "regulated": pj.cfg.get("regulated"), "multi_team": pj.cfg.get("multi_team")}
     if team:
         data["team"] = team

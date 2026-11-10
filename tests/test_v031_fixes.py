@@ -240,5 +240,27 @@ class MergeConflict(Fix31):
                          1)  # the record is in the ledger all the same
 
 
+# ---------------------------------------------------------------- R1-110: a .gitignore that is not UTF-8
+class GitignoreBytes(unittest.TestCase):
+    def test_r1_110_install_appends_to_a_gitignore_that_is_not_utf8(self):
+        d = os.path.realpath(tempfile.mkdtemp(prefix="lean-gi-"))
+        self.addCleanup(shutil.rmtree, d, True)
+        subprocess.run(["git", "init", "-q", d], check=True)
+        old = b"# caf\xe9 build output\ndist/\n"  # Latin-1, as an old editor saved it
+        with open(os.path.join(d, ".gitignore"), "wb") as f:
+            f.write(old)
+        for _ in range(2):  # a re-install adds nothing more
+            p = subprocess.run(["bash", os.path.join(REPO, "install.sh"), d], capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertNotIn("Traceback", p.stderr)
+        with open(os.path.join(d, ".gitignore"), "rb") as f:
+            data = f.read()
+        self.assertTrue(data.startswith(old))
+        self.assertEqual(data.count(b".aidlc-lean/"), 1)
+        p = subprocess.run(TOOL + ["audit", "verify"], cwd=d, capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("OK ", p.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
