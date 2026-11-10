@@ -1530,6 +1530,28 @@ def approver_keys(target):
     return [kind, "SPEC"] if kind in ("REQUIREMENTS", "DESIGN") else [kind]
 
 
+def allowed_approvers(pj, target):
+    """The emails that may approve the target, when `approvers` lists apply to its kind (v0.3.1): those in every
+    list that applies (approver_keys), in the first list's order; None when no list applies."""
+    lists = []
+    for key in approver_keys(target):
+        value = (pj.cfg.get("approvers") or {}).get(key)
+        if value:
+            lists.append([value] if isinstance(value, str) else list(value))
+    if not lists:
+        return None
+    return [x for x in lists[0] if all(x in other for other in lists[1:])]
+
+
+def approvers_text(pj, target):
+    """'Only a@x, b@y may approve INCEPTION (approvers in aidlc-docs/lean.json)', or '' when no list applies."""
+    allowed = allowed_approvers(pj, target)
+    if allowed is None:
+        return ""
+    return "Only %s may approve %s (approvers in %s/lean.json)" % (
+        ", ".join(allowed) or "no one (the approvers lists that apply have no email in common)", target["kind"], DOCS)
+
+
 # ---------------------------------------------------------------- Ideation (v0.3): the IDEATION approval
 def ideation_target(pj, intent):
     """What IDEATION covers: every Ideation page that exists, in stage order; its sha256 is taken over the pages
@@ -1734,7 +1756,9 @@ def approval_note(pj, path, intent=None):
         why = pending_refused(pj, intent, pend) if intent else None
         if why:
             return "-", "%s requested; the approval waits: %s" % (pend["data"]["kind"], why)
-        return "A", "waiting for approval: approve %s %s" % (pend["data"]["kind"], pend["data"]["sha256"][:8])
+        only = approvers_text(pj, pend["data"])
+        return "A", "waiting for approval: approve %s %s%s" % (pend["data"]["kind"], pend["data"]["sha256"][:8],
+                                                             ("; " + only[0].lower() + only[1:]) if only else "")
     if s == "rejected":
         return "-", "rejected · %s: %s" % (last["ts"][:10], one_line(d.get("words"), 120))
     if s == "stale":
@@ -3891,6 +3915,9 @@ def cmd_request(pj, args):
         voids = "Any later change to %s voids the approval." % ("either file" if len(files) > 1 else "the file")
     print("Ask %s to read %s and, if they agree, type exactly:\n\n    approve %s %s\n\nor `%s`. %s" % (
         who, " and ".join(files), kind, digest[:8], reject, voids))
+    only = approvers_text(pj, target)
+    if only:
+        print(only + ".")
     if intent and not kind.startswith("CR-"):
         if session_notes_untouched(pj, intent):
             print("Reminder: the Session notes in %s/%s/%s are still the template: update the Session notes before "

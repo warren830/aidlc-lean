@@ -660,6 +660,37 @@ class StageRecordsAfterReleaseTexts(unittest.TestCase):
                       "again", release)
 
 
+# ---------------------------------------------------------------- live-3: the approvers are named
+class ApproversNamed(Fix31):
+    def test_live_3_request_and_stage_progress_name_the_approvers(self):
+        self.cfg(approvers={"INCEPTION": ["pm@corp.example", "lead@corp.example"],
+                            "REQUIREMENTS": ["lead@corp.example", "dev@example.com"]})
+        i = self.intent()
+        self.requirements(i, "large")
+        self.ok("stage", "start", "application-design")
+        self.design(i)
+        p = self.ok("request", "INCEPTION")
+        only = "Only lead@corp.example may approve INCEPTION (approvers in aidlc-docs/lean.json)"
+        self.assertIn(only + ".", p.stdout)
+        lines = "\n".join(self.progress(i))
+        self.assertRegex(lines, r"- \[A\] Requirements Analysis — waiting for approval: approve INCEPTION "
+                         r"[0-9a-f]{8}; " + re.escape("only lead@corp.example may approve INCEPTION (approvers in "
+                                                      "aidlc-docs/lean.json)"))
+        self.assertIn("approve INCEPTION", self.status())
+        p = self.ok("request", "REQUIREMENTS")
+        self.assertIn("Only lead@corp.example, dev@example.com may approve REQUIREMENTS", p.stdout)
+        self.cfg(approvers={"INCEPTION": ["pm@corp.example"], "REQUIREMENTS": ["dev@example.com"]})
+        self.assertIn("Only no one (the approvers lists that apply have no email in common) may approve INCEPTION",
+                      self.ok("request", "INCEPTION").stdout)
+
+    def test_live_3_no_list_no_line(self):
+        i = self.intent()
+        self.requirements(i, "large")
+        p = self.ok("request", "REQUIREMENTS")
+        self.assertNotIn("may approve", p.stdout)
+        self.assertNotIn("may approve", "\n".join(self.progress(i)))
+
+
 # ---------------------------------------------------------------- live-2: edited pages are recorded again
 class EditedSinceTexts(unittest.TestCase):
     def test_live_2_ideation_and_inception_record_an_edited_stage_again_before_the_request(self):
