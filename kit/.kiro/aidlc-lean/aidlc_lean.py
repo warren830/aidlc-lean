@@ -2866,6 +2866,12 @@ def record_approval(pj, intent, kind, given_hash, words, session):
         return "Approval of %s NOT recorded: %s" % (kind, reason), False
 
     target, err = approval_target(pj, intent, kind, given_hash=given_hash, approving=True)
+    if given_hash and not kind.startswith("CR-") and not (target and target["sha256"].startswith(given_hash.lower())):
+        other = other_intent_request(pj, intent, kind, given_hash)
+        if other:  # the human answers a request of the intent that was active before `new` or `use`
+            return refused("intent", "that line answers the %s request of intent %s, but the active intent is %s. "
+                           "Switch back first (`%s use %s`), then type the line again." % (
+                               kind, other, intent or "none", TOOL, other), target)
     if not target:
         return refused("target", "%s." % err)
     digest = target["sha256"]
@@ -2925,6 +2931,17 @@ def record_approval(pj, intent, kind, given_hash, words, session):
         what = ": the code-generation plan of unit %s" % target["unit"]
     return ("Recorded: %s approved (sha %s) by %s%s." % (kind, digest[:8], ident.get("git_email") or ident["os_user"],
                                                          what)), True
+
+
+def other_intent_request(pj, intent, kind, given_hash):
+    """The intent, other than the active one, whose last `request <kind>` printed this hash; None if none did."""
+    given = given_hash.lower()
+    for e in reversed(pj.events()):
+        d = e.get("data") or {}
+        if e.get("event") == "APPROVAL_REQUESTED" and e.get("intent") not in (None, intent) and \
+                d.get("kind") == kind and (d.get("sha256") or "").startswith(given):
+            return e["intent"]
+    return None
 
 
 def block(pj, gate, msg, intent, detail):

@@ -359,5 +359,28 @@ class RecordsOnlyCommit(Fix31):
         self.assertEqual(self.bash("git commit -m x").returncode, 0)
 
 
+# ---------------------------------------------------------------- R1-115: an approval line for another intent
+class TwoIntents(Fix31):
+    def test_r1_115_the_refusal_names_the_intent_the_line_is_for(self):
+        a = self.intent("alpha")
+        self.requirements(a)
+        h = self.request_hash("REQUIREMENTS")
+        b = self.intent("beta")
+        out = self.say("approve REQUIREMENTS %s" % h)
+        self.assertIn("Approval of REQUIREMENTS NOT recorded: that line answers the REQUIREMENTS request of intent "
+                      "%s, but the active intent is %s. Switch back first (`python3 .kiro/aidlc-lean/aidlc_lean.py use "
+                      "%s`), then type the line again." % (a, b, a), out.stdout)
+        self.assertNotIn("changed", out.stdout)
+        self.assertEqual(self.events("APPROVAL_REFUSED")[-1]["data"]["check"], "intent")
+        self.say("approve DESIGN %s" % h)  # beta has no design page yet: the hash still names alpha's request
+        self.assertEqual(self.events("APPROVAL_REFUSED")[-1]["data"]["check"], "target")
+        self.ok("use", "alpha")
+        out = self.say("approve REQUIREMENTS %s" % h)
+        self.assertIn("Recorded: REQUIREMENTS approved (sha %s)" % h, out.stdout)
+        self.ok("use", "beta")
+        out = self.say("approve REQUIREMENTS 1a2b3c4d")  # a hash no request has: the old reason
+        self.assertIn("the file changed since that request", out.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
