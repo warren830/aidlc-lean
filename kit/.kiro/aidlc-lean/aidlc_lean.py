@@ -3574,8 +3574,8 @@ def cmd_verify(pj, args):
     results, ok = [], True
     for c in checks:
         t0 = time.time()
-        try:
-            p = subprocess.run(c, shell=True, cwd=pj.root, capture_output=True, text=True,
+        try:  # output that is not UTF-8 (a GBK source line, raw bytes) is decoded with replacements, never fatal
+            p = subprocess.run(c, shell=True, cwd=pj.root, capture_output=True, text=True, errors="replace",
                                timeout=pj.cfg.get("check_timeout_sec", 1800))
             code, out = p.returncode, (p.stdout + p.stderr)
         except subprocess.TimeoutExpired as e:
