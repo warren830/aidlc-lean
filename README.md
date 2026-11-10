@@ -428,7 +428,7 @@ python3 tools/vendor_pstack.py                 # 用 ~/.claude/plugins/cache/cur
 python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目录
 ```
 
-卡末尾的版本号从那个目录的 plugin.json 读。任何一项检查没过，`kit-pstack/` 保持原样，并一次列出所有问题。
+卡末尾的版本号从那个目录的 plugin.json 读。任何一项检查没过，`kit-pstack/` 保持原样：上游文字变了、改编对不上的地方一次全部列出；这些都对上以后，生成的卡再整体检查一遍，问题也一次列出。
 
 ## 测过什么
 

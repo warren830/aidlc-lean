@@ -319,11 +319,12 @@ def read_version(src):
     return list(found.values())[0]
 
 
-def apply_edits(label, text, edits):
+def apply_edits(label, text, edits, problems):
+    """Apply the edits that still find their upstream text; each one that does not goes to problems."""
     for old, new in edits:
         if old not in text:
-            fail("%s: the upstream text for an edit is gone; update the edit tables in tools/vendor_pstack.py: %r"
-                 % (label, old[:80]))
+            problems.append("%s: the upstream text for an edit is gone: %r" % (label, old[:80]))
+            continue
         text = text.replace(old, new)
     return text
 
@@ -349,21 +350,24 @@ def unshipped_refs(text, upstream):
 
 
 def build(src, version, license_text, out):
+    """Write the pack into out. Returns the problems with the upstream text (all of them, not just the first)."""
     footer = FOOTER % version
+    problems = []
     skills = os.path.join(out, ".kiro", "skills")
     for name, edits in COPIED.items():
         text = read(os.path.join(src, "skills", name, "SKILL.md"))
         text = re.sub(r"(?m)^name:\s*%s\s*$" % re.escape(name), "name: pstack-%s" % name, text, count=1)
         if text.count("name: pstack-%s" % name) != 1:
-            fail("%s: the upstream card has no 'name: %s' line" % (name, name))
+            problems.append("%s: the upstream card has no 'name: %s' line" % (name, name))
         text = re.sub(r"(?m)^disable-model-invocation:.*\n", "", text)
         text = ADAPTER_RE.sub("", text)
-        text = apply_edits(name, text, edits)
+        text = apply_edits(name, text, edits, problems)
         write(os.path.join(skills, "pstack-" + name, "SKILL.md"), text.rstrip() + APPEND.get(name, "") + footer)
     write(os.path.join(skills, "pstack-interrogate", "SKILL.md"), INTERROGATE + footer)
     for ref in REFS:
         text = read(os.path.join(src, "skills", "interrogate", "references", ref))
-        write(os.path.join(skills, "pstack-interrogate", "references", ref), apply_edits(ref, text, REF_EDITS.get(ref, [])))
+        write(os.path.join(skills, "pstack-interrogate", "references", ref),
+              apply_edits(ref, text, REF_EDITS.get(ref, []), problems))
     write(os.path.join(skills, "pstack-swarm", "SKILL.md"), SWARM + footer)
     write(os.path.join(out, ".kiro", "steering", "aidlc-lean-pstack.md"), STEERING)
     for name, (model, tools, description, role, rules) in AGENTS.items():
@@ -371,6 +375,7 @@ def build(src, version, license_text, out):
         fm += (["model: %s" % model] if model else []) + ["---", ""]
         write(os.path.join(out, ".kiro", "agents", name + ".md"), "\n".join(fm) + AGENT_BODY.format(role=role, rules=rules))
     write(os.path.join(out, "LICENSE-pstack"), license_text)
+    return problems
 
 
 def check_pack(out, version, upstream):
@@ -436,7 +441,11 @@ def main(argv):
         umask = os.umask(0)
         os.umask(umask)
         os.chmod(tmp, 0o777 & ~umask)  # mkdtemp makes it 0700; the pack folder should get normal permissions
-        build(src, version, license_text, tmp)
+        problems = build(src, version, license_text, tmp)
+        if problems:
+            fail("the upstream text changed in %d place%s; update the edit tables in tools/vendor_pstack.py; "
+                 "kit-pstack/ was not changed:\n  %s" % (len(problems), "" if len(problems) == 1 else "s",
+                                                       "\n  ".join(problems)))
         check_pack(tmp, version, upstream)
         swap_in(tmp, OUT)
     finally:
