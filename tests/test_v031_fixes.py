@@ -691,6 +691,41 @@ class ApproversNamed(Fix31):
         self.assertNotIn("may approve", "\n".join(self.progress(i)))
 
 
+# ---------------------------------------------------------------- live-5: no second start record
+STORIES = "inception/user-stories/stories.md"
+
+
+class StartTwice(Fix31):
+    def started(self, sid):
+        return [e for e in self.events("STAGE_STARTED") if e["data"]["stage"] == sid]
+
+    def test_live_5_a_stage_in_progress_is_not_started_again(self):
+        i = self.intent()
+        p = self.ok("stage", "start", "requirements")  # `new` started it
+        self.assertIn("Kept the existing %s. Requirements Analysis is already in progress (started " % self.req_path(i),
+                      p.stdout)
+        self.assertIn("nothing new recorded", p.stdout)
+        self.assertEqual(len(self.started("requirements")), 1)
+        for _ in range(2):
+            self.ok("stage", "start", "user-stories")
+            self.ok("stage", "start", "units")
+        self.assertEqual((len(self.started("user-stories")), len(self.started("units"))), (1, 1))
+        self.fill(self.ipath(i, STORIES), "\n| US-1 | buyer | refund | AC-1 |\n")
+        self.ok("stage", "done", "user-stories", "--note", "one story")
+        self.ok("stage", "start", "user-stories")  # re-opening a done stage is a new record
+        self.assertEqual(len(self.started("user-stories")), 2)
+        self.assertIn("- [-] User Stories — in progress", self.progress(i))
+
+    def test_live_5_after_new_with_ideation(self):
+        p = self.ok("new", "idea", "--ideation")
+        self.ok("stage", "start", "intent-capture")
+        self.assertEqual(len(self.started("intent-capture")), 1)
+        self.ok("stage", "skip", "ideation", "--reason", "not now")  # a start after a phase skip re-opens it
+        self.ok("stage", "start", "intent-capture")
+        self.assertEqual(len(self.started("intent-capture")), 2)
+        self.assertTrue(p.stdout)
+
+
 # ---------------------------------------------------------------- live-2: edited pages are recorded again
 class EditedSinceTexts(unittest.TestCase):
     def test_live_2_ideation_and_inception_record_an_edited_stage_again_before_the_request(self):

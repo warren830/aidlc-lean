@@ -3745,6 +3745,12 @@ def cmd_stage(pj, args):
     label = st.name + (" (%s)" % unit if unit else "")
     unit_arg = " --unit %s" % unit if unit else ""
     if action == "start":
+        ev = stage_event(pj, intent, st, unit)
+        if ev and ev["event"] == "STAGE_STARTED" and os.path.exists(path):  # v0.3.1: no second record
+            print("Kept the existing %s. %s is already in progress (started %s; nothing new recorded). When it is "
+                  "done: `%s stage done %s%s --note \"<what was done: inputs used, what it produced, key decisions>\"`."
+                  % (r, label, when(ev["ts"]), TOOL, st.id, unit_arg))
+            return 0
         created = not os.path.exists(path) and create_new(path, template(st.template, **doc_vars(pj, intent, st, unit)))
         pj.append("STAGE_STARTED", {"stage": st.id, "unit": unit, "path": r, "created": created}, intent)
         refresh_state_doc(pj, intent)
