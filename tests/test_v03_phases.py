@@ -153,7 +153,7 @@ class StageTable(V03):
         self.assertEqual(core.IDEATION_REQUIRED, REQUIRED)
         self.assertEqual(sorted(core.AFTER_RELEASE_IDS), sorted(["ci-pipeline"] + [s for s, _, _ in OPERATIONS]))
         self.assertIn("IDEATION", core.APPROVAL_KINDS)
-        self.assertEqual(core.VERSION, "0.3.0")
+        self.assertEqual(core.VERSION, "0.3.1")
         m = core.APPROVE_RE.search("approve IDEATION 1a2b3c4d")
         self.assertEqual((m.group(2), m.group(3)), ("IDEATION", "1a2b3c4d"))
 
@@ -175,7 +175,7 @@ class StageTable(V03):
             self.assertIn(text, out)
         for sid, _, doc in IDEATION + (CI,) + OPERATIONS:
             self.assertRegex(out, r"(?m)^  %s +%s " % (re.escape(sid), re.escape(doc)))
-        self.assertEqual(self.ok("--version").stdout.strip(), "0.3.0")
+        self.assertEqual(self.ok("--version").stdout.strip(), "0.3.1")
         p = self.tool("stage", "bogus")
         self.assertIn("phases (stage skip only): ideation, operations", p.stdout)
 

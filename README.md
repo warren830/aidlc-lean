@@ -1,6 +1,6 @@
 # AI-DLC Lean
 
-AI-DLC 的轻量版，给 **Kiro CLI（v3 引擎）** 用。版本 0.3。
+AI-DLC 的轻量版，给 **Kiro CLI（v3 引擎）** 用。版本 0.3.1（只修问题，见设计说明 §10）。
 
 它保留 AI-DLC 的样子：
 
@@ -28,10 +28,10 @@ v0.3 加回了 AI-DLC 的两段，都是**可选的**，默认不开：
 - 需求有空白、要跨团队、或者受监管的工作，用 Lean。"需求有空白"那题，Lean 的第一次交付 3 次都比 vibe 高：60/57/56 对 50/48/55（满分 60）。
 - 对比报告：`ai-native-dev/k3-cli-compare/报告-vibe对比Lean-K3-3轮汇总-20261110.md`。
 
-体量（2026-11-09 用 `wc` 数的）：
+体量（2026-11-10 用 `wc` 数的）：
 
-- **每轮常驻说明**：997 词（装 pstack 包再加 144 词）。2.11.3 的 Kiro 发行版约 1.6 万词，能跑 v3 的 kiro-ide 发行版约 1.8 万词。
-- **代码**：一个 Python 脚本，4,033 行，只用标准库。2.11.3 的引擎约 24 万行。
+- **每轮常驻说明**：999 词（装 pstack 包再加 144 词）。2.11.3 的 Kiro 发行版约 1.6 万词，能跑 v3 的 kiro-ide 发行版约 1.8 万词。
+- **代码**：一个 Python 脚本，4,434 行，只用标准库。2.11.3 的引擎约 24 万行。
 
 详细对比见 [COMPARISON.md](COMPARISON.md)，设计说明见 [docs/design-v0.2.md](docs/design-v0.2.md)。
 
@@ -475,6 +475,7 @@ python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目
 - **说清楚**：
   - 这几轮里 K3 从没试过走被拦的捷径（"先写代码，回头再批""发布后不走流程小改一下"都拒绝了），所以大部分关卡在真机上没真正触发过。v0.2 真机上被拦过的只有 verify（普通模式那次把 verify 和 commit 串成一条命令）、protected（改受保护的契约测试，人打 `allow test change` 后放行）、records（一次误拦：用 shell 列审计目录）和 contract（按人的要求故意去改别的团队的契约）。requirements、design、plan、released、intent、danger 这些关卡靠单元测试覆盖。
   - 11-08 实测之后这一轮的修复（子代理的任务说明不再算人的发言、CR 只给申请的团队放行并且能关闭、计划做到一半时的提示、派单写进文件等）只有单元测试，还没在 Kiro 里重跑。
+  - **v0.3.1 的修复**（设计说明 §10：review 第 1 轮的 15 条、只读 shell 命令不再误拦、v0.3 实测后的 7 处修复）只有单元测试，还没在 Kiro 里重跑。
   - **v0.3 的构想段（IDEATION 审批、`ideation` 关卡）、CI 流水线和运维段只有单元测试**，没做模拟跑，也没在 Kiro 里真跑过。上面的真机测试都是 v0.2。两张新技能卡写给产品经理和运维用，AI 照着它们能不能把页面写好、会不会编数字，还没验证过。
   - **环境**：这几轮用的是测试人自己的 Kiro 配置。默认 agent 是 amzn-builder，它自己的 hook、记忆和全局 steering 也进了会话，K3 评审那次也加载了。沙箱允许 Kiro 读 `~/.kiro`，用户级的 agent、hook 和 MCP 都会加载。要公平地测，请用干净的 Kiro 配置（单独的 HOME），或者指定一个不带用户 hook、记忆和 MCP 的 agent。
 
@@ -504,20 +505,21 @@ python3 tools/vendor_pstack.py <pstack 目录>   # 或者指定一个 pstack 目
   - 大型老系统（11-08 的老代码场景是一个小的 FastAPI 应用）；
   - 大部分关卡在真机上被触发的情况（见上面"说清楚"）；
   - 11-08 实测之后这一轮的修复，包括派单写进文件后两个评审是不是真的同时开始；
-  - v0.3 的构想、CI 流水线和运维段。
+  - v0.3 的构想、CI 流水线和运维段；
+  - v0.3.1 的修复。
 - **大仓库**：算代码指纹时借用 git 的索引缓存，只重读改过的文件；没进 git 的文件，第一次要整个读一遍。2026-11-08 在 5 万个文件的仓库上测 v0.2（Apple M3 Pro，机器同时在跑别的任务）：有当前 intent 时会话开始约 0.6 秒，提交检查约 0.3 秒；删掉 `.aidlc-lean/` 里的指纹缓存后，第一次会话开始约 0.8 秒。
 
 ## 目录
 
 ```
 install.sh                                安装到项目
-kit/.kiro/steering/aidlc-lean.md          常驻规则（997 词）
-kit/.kiro/skills/aidlc-lean-*/            8 张按需加载的技能卡：ideation、inception、construction、release、operations、resume、multi-team、regulated（共 4,788 词）
+kit/.kiro/steering/aidlc-lean.md          常驻规则（999 词）
+kit/.kiro/skills/aidlc-lean-*/            8 张按需加载的技能卡：ideation、inception、construction、release、operations、resume、multi-team、regulated（共 4,784 词）
 kit/.kiro/hooks/aidlc-lean-*.json         3 个 v3 hook
-kit/.kiro/aidlc-lean/aidlc_lean.py        唯一的脚本（4,033 行）
-kit/.kiro/aidlc-lean/templates/           28 个模板（共 5,438 词）：24 个阶段文档（v0.2 的 9 个，加 v0.3 构想 7 个、CI 流水线 1 个、运维 7 个），加 aidlc-state.md、decisions.md、cr.md、lean.json
-tests/                                    单元测试（9 个文件，250 个）
-docs/design-v0.2.md                       v0.2 的设计说明（§9 是 v0.3 的构想、CI 流水线和运维段）
+kit/.kiro/aidlc-lean/aidlc_lean.py        唯一的脚本（4,434 行）
+kit/.kiro/aidlc-lean/templates/           28 个模板（共 5,484 词）：24 个阶段文档（v0.2 的 9 个，加 v0.3 构想 7 个、CI 流水线 1 个、运维 7 个），加 aidlc-state.md、decisions.md、cr.md、lean.json
+tests/                                    单元测试（10 个文件，290 个）
+docs/design-v0.2.md                       v0.2 的设计说明（§9 是 v0.3 的构想、CI 流水线和运维段，§10 是 v0.3.1 的修复）
 docs/e2e-2026-11-07.md                    v0.1 的真机测试记录（摘要）
 docs/e2e-2026-11-08-v0.2.md               v0.2 的真机测试：普通模式
 docs/e2e-2026-11-08-scenarios.md          v0.2 的真机测试：受监管、多团队、跨多天、老代码 + pstack

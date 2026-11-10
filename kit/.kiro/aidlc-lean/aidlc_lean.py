@@ -101,7 +101,7 @@ try:
 except ImportError:  # Windows: no advisory locks; parallel hooks then run unlocked
     fcntl = None
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 KIT_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES = os.path.join(KIT_DIR, "templates")
 TOOL = "python3 .kiro/aidlc-lean/aidlc_lean.py"
