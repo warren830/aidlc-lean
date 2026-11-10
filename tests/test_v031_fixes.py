@@ -758,5 +758,13 @@ class AfterReleaseOpsTexts(unittest.TestCase):
         self.assertNotIn("follows the released-intent rule", ops)
 
 
+# ---------------------------------------------------------------- live-8: design changes after RELEASE
+class AfterReleaseDesignTexts(unittest.TestCase):
+    def test_live_8_the_release_skill_sends_design_changes_to_a_new_intent(self):
+        release = kit_text("kit", ".kiro", "skills", "aidlc-lean-release", "SKILL.md")
+        self.assertIn("only its Operations pages and ci-pipeline still take edits and stage commands", release)
+        self.assertIn("Design changes, follow-ups and fixes start a new intent (`lean new <slug>`)", release)
+
+
 if __name__ == "__main__":
     unittest.main()

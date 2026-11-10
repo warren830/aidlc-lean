@@ -30,6 +30,4 @@ Fix what matters, run `lean verify` again, and note the remaining items in revie
 
 In regulated mode, also run `lean audit verify` before the request and `lean audit pack` after the approval (skill `aidlc-lean-regulated`), and commit the evidence and audit.md with the release.
 
-After the approval the intent is released and closed (`lean status` shows it). Start follow-ups and fixes as a new intent (`lean new <slug>`); until then, regulated mode blocks code writes, and standard mode treats it as no intent: keep to small edits.
-
-Optional next: record deployment and operations (skill `aidlc-lean-operations`); those stages and ci-pipeline still take stage commands. Or `lean stage skip operations --reason "<why>"`.
+After the approval the intent is closed (`lean status` shows it released): only its Operations pages and ci-pipeline still take edits and stage commands (skill `aidlc-lean-operations`, or `lean stage skip operations --reason "<why>"`). Design changes, follow-ups and fixes start a new intent (`lean new <slug>`); until then regulated mode blocks code writes, and standard mode allows only small edits.
