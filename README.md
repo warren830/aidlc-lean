@@ -247,7 +247,7 @@ Status: released (RELEASE approved)
 
 依赖：python3（3.8 以上）和 git，macOS 或 Linux。不需要 bun、node，也不需要联网。
 
-`lean.json` 由人改（hook 不让 AI 改）。里面还有：`plan`（每个单元的代码计划要不要批：默认 `auto`，只有受监管模式要批；`always` 是所有模式都要批）、`approvers`（审批人白名单，按审批种类：IDEATION、REQUIREMENTS、DESIGN、INCEPTION、PLAN、RELEASE、CR）、`deny_commands`（禁止的命令，正则；写了就替换默认名单，所以要把 `aidlc_lean.py` 里 `DEFAULT_CONFIG` 的默认几条一起抄上）、`fingerprint_exclude`（不算进代码指纹的路径）。
+`lean.json` 由人改（hook 不让 AI 改）。里面还有：`plan`（每个单元的代码计划要不要批：默认 `auto`，只有受监管模式要批；`always` 是所有模式都要批）、`approvers`（审批人白名单，按审批种类：IDEATION、REQUIREMENTS、DESIGN、INCEPTION、PLAN、RELEASE、CR）、`deny_commands`（禁止的命令，正则；写了就替换默认名单，所以要把 `aidlc_lean.py` 里 `DEFAULT_CONFIG` 的默认几条一起抄上）、`fingerprint_exclude`（不算进代码指纹的路径，比如 `["dist/**"]`；加在默认的 `aidlc-docs/**` 和 `.kiro/**` 之上，这两条总是不算，契约除外）。
 
 **重装和升级**：
 

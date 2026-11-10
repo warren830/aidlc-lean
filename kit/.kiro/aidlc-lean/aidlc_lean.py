@@ -126,10 +126,15 @@ DEFAULT_CONFIG = {
     "contracts_dir": DOCS + "/contracts",
     "teams": [],
     "approvers": {},
-    "fingerprint_exclude": [DOCS + "/**", ".kiro/**"],
+    "fingerprint_exclude": [],  # the team's own; RECORD_GLOBS always count too
     "state_reminder_after_writes": 25,
     "resume_gap_hours": 4,
 }
+
+# Process records, never product code (except contracts_dir): the ledger is under aidlc-docs/, so a fingerprint
+# that counted it would change with every verify. lean.json's fingerprint_exclude adds to these, it does not replace
+# them.
+RECORD_GLOBS = (DOCS + "/**", ".kiro/**")
 
 # ---------------------------------------------------------------- the AI-DLC stages
 # doc: the stage's document, relative to aidlc-docs/<intent>/ ({unit} for per-unit stages);
@@ -1142,9 +1147,11 @@ class Project:
         return bool(c) and c != base and c != base + "/OWNERS" and not c.startswith(base + "/changes/")
 
     def is_record_path(self, relpath):
-        """Process records, not product code: fingerprint_exclude (aidlc-docs/**, .kiro/**), but contracts count
-        as code."""
-        return matches(relpath, self.cfg.get("fingerprint_exclude")) and not self.is_contract(relpath)
+        """Process records, not product code: RECORD_GLOBS (aidlc-docs/**, .kiro/**) and the team's
+        fingerprint_exclude, but contracts count as code."""
+        extra = self.cfg.get("fingerprint_exclude") or []
+        globs = RECORD_GLOBS + tuple([extra] if isinstance(extra, str) else extra)
+        return matches(relpath, globs) and not self.is_contract(relpath)
 
     def fingerprint(self):
         """Content fingerprint of the product code: every tracked file and every untracked, not-ignored file,

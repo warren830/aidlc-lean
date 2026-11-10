@@ -7,12 +7,16 @@ phases (live-1 to live-8).
 Run: python3 -m unittest discover -s tests -v
 """
 import os
+import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from test_aidlc_lean import SUMMARY  # noqa: E402
-from test_v02_live_fixes import Live  # noqa: E402
+from test_aidlc_lean import DOCS, SUMMARY, TOOL  # noqa: E402
+from test_v02_live_fixes import BEGIN, END, Live  # noqa: E402
 
 
 class Fix31(Live):
@@ -123,6 +127,27 @@ class TeamNamesChinese(Fix31):
         self.assertEqual(self.write(self.pay, "openapi: 3.1.0\n", team="物流").returncode, 2)
         p = self.ok("init", "--team", "订单")
         self.assertIn("is now team 订单 (was 支付)", p.stdout)
+
+
+# ---------------------------------------------------------------- R1-108: fingerprint_exclude adds to the defaults
+class FingerprintExclude(Fix31):
+    def test_r1_108_the_teams_paths_add_to_the_record_paths_and_release_passes(self):
+        self.cfg(checks=["true"], fingerprint_exclude=["dist/**"])
+        i = self.ready()
+        self.skip_to_code()
+        self.build_unit(i)  # verify records itself in the ledger: that must not change the code fingerprint
+        self.sh(["git", "add", "-A"])
+        self.assertEqual(self.bash("git commit -m work").returncode, 0)
+        self.commit_all()
+        self.put("dist/bundle.js", "built\n")  # the team's own exclusion still counts
+        self.assertEqual(self.bash("git commit -m bundle").returncode, 0)
+        self.sh(["git", "checkout", "--", "."])
+        os.remove(os.path.join(self.dir, "dist", "bundle.js"))
+        self.assertIn("Wrote", self.ok("release").stdout)
+        self.put("app.py", "x = 2\n")  # product code still counts
+        r = self.bash("git commit -m app")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("blocked (verify)", r.stderr)
 
 
 if __name__ == "__main__":
