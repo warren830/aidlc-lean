@@ -107,7 +107,7 @@ v0.3 加回了 AI-DLC 的两段，都是**可选的**，默认不开：
 - **AI 不部署**：AI 写文档和配置，部署、建环境、回滚、对共享环境压测都由团队的 CI/CD（比如 GitLab 再到 Argo CD）或人来做。这是常驻说明和技能卡写给 AI 的规则，工具不能保证。禁止名单（关卡 `danger`）只是一份很短的默认名单，有 `terraform apply`、`kubectl apply` 等几条，挡不住所有部署命令；团队自己用的部署命令，由人加进 `aidlc-docs/lean.json` 的 `deny_commands`。真正管住部署的是团队的流水线和权限，比如 AI 跑命令用的账号没有部署权限（和上面"护栏，不是安全边界"一样）。部署记录只在真部署过以后，按流水线和看着部署的人给的事实填。
 - **配置就是代码**：CI 文件、K8s 清单、Helm 值、IaC、写成代码的告警和看板，都算产品文件：写代码的关卡照样管，改完要重新 `lean verify`。`aidlc-docs/` 里的页面只是记录。
 - **发布前后都能写**：任何模式都可选。发布前写计划类的页面（CI、部署流水线、环境、可观测性、事故响应、压测计划），配置提交并 verify 过，再 `lean release`。RELEASE 的哈希只管 release.md：里面有提交、代码指纹、verify 结果、审批表、Open items，和 `lean release` 那一刻的阶段进度（每个运维阶段当时是做完、跳过还是没开始）；运维页面本身的内容不在里面。所以批完以后再改或新加运维页面，RELEASE 不会作废，这些页面只是记录。但在 `lean release` 和 RELEASE 批准之间记下的阶段记录（`stage start/done/skip`，包括整段跳过运维）会让 release.md 作废，和少了一条审批一样，要重新 `lean release`、重新请求（v0.3.1；按日志里的记录比，不按时间）。所以运维阶段要么在 `lean release` 之前记好，要么等 RELEASE 批了再记。运维的配置文件算在代码指纹里：`lean release` 之后改了，要重新 verify、`lean release`、批。RELEASE 也不等运维页面。发布以后，只有运维阶段和 ci-pipeline 还接受阶段命令，intent 仍然是已发布；`lean status` 的"下一步"会提示 "optional: record deployment and operations ..."，只是提示。
-- **发布后改产品文件**（比如告警阈值）照已发布 intent 的老规矩：普通模式下小改动直接改，受监管模式要开新 intent。
+- **发布后只写页面**：要改产品配置（CI 或部署任务、清单、告警阈值），开新 intent。普通模式下小改动可以直接改，但要在阶段说明（`--note`）里写明改了什么，再跑 `lean verify`（这次 verify 记在日志里，不算进已发布 intent 的阶段日志）。受监管模式一律开新 intent。
 - **怎么跳**：`lean stage skip operations --reason "..."` 一次跳过还没有记录的运维阶段（不含 ci-pipeline）；ci-pipeline 要单独跳：`lean stage skip ci-pipeline --reason "..."`。
 
 阶段进度列表的顺序：构想 7 个、起步 5 个、构建（每个单元 4 个，然后构建测试、CI 流水线）、发布、运维 7 个。一共 26 个阶段（每个单元的 4 个只算一次）。一段被一次整段跳过时，只显示一行，比如 `- [S] Ideation — skipped: not requested (lean new without --ideation)`、`- [S] Operations — skipped: platform team deploys`。

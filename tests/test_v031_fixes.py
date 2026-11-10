@@ -747,5 +747,16 @@ class CommitmentTexts(unittest.TestCase):
         self.assertIn('an unconfirmed commitment is "not confirmed (ask <who>)"', ideation)
 
 
+# ---------------------------------------------------------------- live-7: after RELEASE, pages only
+class AfterReleaseOpsTexts(unittest.TestCase):
+    def test_live_7_the_operations_skill_keeps_product_config_out_of_a_released_intent(self):
+        ops = kit_text("kit", ".kiro", "skills", "aidlc-lean-operations", "SKILL.md")
+        self.assertIn("After RELEASE, write pages only. Product config (CI or deploy jobs, manifests, an alarm "
+                      "threshold) is a new intent; in standard mode a small edit may go in, named in the stage note "
+                      "and followed by `lean verify`", ops)
+        self.assertIn("Regulated mode: always a new intent.", ops)
+        self.assertNotIn("follows the released-intent rule", ops)
+
+
 if __name__ == "__main__":
     unittest.main()

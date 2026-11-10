@@ -23,8 +23,6 @@ Each: `lean stage start <id>`, fill the page, `lean stage done <id> --note "<inp
 | Performance Validation (`performance-validation`) | `load-test-plan.md`: a scenario per NFR target, then results | targets need load proof |
 | Feedback Optimization (`feedback-optimization`) | `feedback-loop.md`: SLO results, cost, follow-up intents | weeks after go-live |
 
-Operations pages live in `operations/<stage>/`.
-
 ## Before RELEASE: prepare
 - The pages that plan it: ci-pipeline, deployment-pipeline (always with a rollback), environment-provisioning, observability-setup, incident-response, and the plan part of performance-validation.
 - Their config files: commit them and run `lean verify` before `lean release`, so the review and release record cover them. A product file changed after `lean release` means `lean verify` and `lean release` again.
@@ -34,12 +32,10 @@ Operations pages live in `operations/<stage>/`.
 Operations stages and ci-pipeline still take stage commands after RELEASE; the intent stays released.
 - **deployment-execution**: once the team's pipeline deployed (staging may come before RELEASE), fill deployment-log.md from the pipeline run and whoever watched it. Never record a deployment that has not happened.
 - **performance-validation**: add the team's results, target against actual, and run `lean stage done` again.
-- **feedback-optimization**: after some weeks in production. Each follow-up becomes a new intent (`lean new <slug>`, `--ideation` if it needs product discovery).
+- **feedback-optimization**: after some weeks in production. Each follow-up becomes a new intent (`lean new <slug>`, with `--ideation` for product discovery).
 
-A product file changed after RELEASE (e.g. an alarm threshold) follows the released-intent rule: a small edit in standard mode; otherwise, and always in regulated mode, a new intent.
+After RELEASE, write pages only. Product config (CI or deploy jobs, manifests, an alarm threshold) is a new intent; in standard mode a small edit may go in, named in the stage note and followed by `lean verify` (its verify is logged outside the intent). Regulated mode: always a new intent.
 
 ## Skipping
-- The whole phase: `lean stage skip operations --reason "<why>"` (e.g. "the platform team deploys and monitors") skips every Operations stage with no record yet.
+- The whole phase: `lean stage skip operations --reason "<why>"` skips every Operations stage with no record yet.
 - ci-pipeline is not part of it: `lean stage skip ci-pipeline --reason "existing CI is adequate"`.
-
-After RELEASE, `lean status` suggests them until each has a record.
