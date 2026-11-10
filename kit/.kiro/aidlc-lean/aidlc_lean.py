@@ -3448,7 +3448,7 @@ def cmd_new(pj, args):
         print("usage: new <slug> [--title T] [--ideation]%s" % ("  (%s)" % err if err else ""))
         return 1
     title = opts.get("--title") or slug.replace("-", " ")
-    intent = datetime.now().strftime("%y%m%d") + "-" + slug
+    intent = now()[2:10].replace("-", "") + "-" + slug  # the UTC date, as Created and every recorded date
     if os.path.exists(pj.doc(intent)):
         print("Intent exists: %s/%s" % (DOCS, intent))
         return 1

@@ -276,7 +276,7 @@ Status: released (RELEASE approved)
 
 `lean` 是 `python3 .kiro/aidlc-lean/aidlc_lean.py` 的简称。人和 AI 都能用 `lean status` 看进度和下一步。
 
-1. 你说要做什么。AI 先读代码，用 `lean new <名字>` 开一个 intent。老代码先做逆向工程，新项目跳过。产品经理要先把想法理清楚的，用 `lean new <名字> --ideation`：先走构想，批了 IDEATION 再到这一步（见 1a）。
+1. 你说要做什么。AI 先读代码，用 `lean new <名字>` 开一个 intent（目录是 `aidlc-docs/<yymmdd>-<名字>/`，日期按 UTC，和页面里的 Created 一样）。老代码先做逆向工程，新项目跳过。产品经理要先把想法理清楚的，用 `lean new <名字> --ideation`：先走构想，批了 IDEATION 再到这一步（见 1a）。
 2. AI 把问题**一次**问完，每题带推荐答案。你可以回"都按推荐"，或者只改几条。问答抄进 requirements.md；AI 猜的部分写成"假设"（A-1……），你让 AI 自己定的也写成假设，不算你的回答。
 3. AI 写 requirements.md：大小（把模板里占位的 `Size: <small|large>` 改成 `small` 或 `large`；新的公开模块或接口、新的数据模型、改 schema 或接口、跨好几个模块，都算 `large`）、目标、不做什么、验收标准（AC-1……）、非功能指标、假设。需要时再写用户故事、应用设计、拆分单元。每做完一个阶段跑 `lean stage done`，用不上的阶段跑 `lean stage skip`。这些都不停下来问你。
 4. AI 跑 `lean request INCEPTION`，把口令给你，比如 `approve INCEPTION 8cf2cbce`。你读需求和设计两页，同意就自己打这一行。想先定需求，就先批 REQUIREMENTS，设计写完再批 DESIGN。每次停下来等你之前（问问题、要审批），AI 都要先更新 Session notes；Session notes 还是模板原样时，`lean request` 会提醒它。

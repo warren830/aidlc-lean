@@ -382,5 +382,18 @@ class TwoIntents(Fix31):
         self.assertIn("the file changed since that request", out.stdout)
 
 
+# ---------------------------------------------------------------- R1-116: one date for the folder and Created
+class IntentDates(Fix31):
+    def test_r1_116_the_folder_name_and_created_use_the_same_utc_date(self):
+        utc = datetime.now(timezone.utc)
+        tz = "Etc/GMT+12" if utc.hour < 12 else "Etc/GMT-14"  # UTC-12 or UTC+14: the local date is not UTC's now
+        p = self.sh(TOOL + ["new", "refunds"], env=dict(self.env(), TZ=tz))
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        intent = re.search(r"aidlc-docs/(\S+) \(", p.stdout).group(1)
+        created = re.search(r"Created: \d\d(\d\d)-(\d\d)-(\d\d)", self.state(intent))
+        self.assertEqual(intent[:6], "".join(created.groups()))
+        self.assertEqual(intent[:6], utc.strftime("%y%m%d"))  # UTC, like every date the tool records
+
+
 if __name__ == "__main__":
     unittest.main()
