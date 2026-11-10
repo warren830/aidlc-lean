@@ -660,5 +660,14 @@ class StageRecordsAfterReleaseTexts(unittest.TestCase):
                       "again", release)
 
 
+# ---------------------------------------------------------------- live-2: edited pages are recorded again
+class EditedSinceTexts(unittest.TestCase):
+    def test_live_2_ideation_and_inception_record_an_edited_stage_again_before_the_request(self):
+        line = ("Record a stage marked `(edited since)` again (`lean stage done`, noting what changed) before the "
+                "request.")
+        for skill in ("aidlc-lean-ideation", "aidlc-lean-inception"):
+            self.assertIn(line, kit_text("kit", ".kiro", "skills", skill, "SKILL.md"), skill)
+
+
 if __name__ == "__main__":
     unittest.main()
