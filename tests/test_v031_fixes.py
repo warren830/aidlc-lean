@@ -427,5 +427,28 @@ class InitModeFlags(Fix31):
         self.assertEqual((p.stdout + p.stderr).count("WARNING"), 1)  # install.sh's own, not a second one
 
 
+# ---------------------------------------------------------------- R1-119: the README quotes the Release row as printed
+class ReadmeReleaseRow(Fix31):
+    def test_r1_119_the_readme_quotes_the_release_row_the_tool_prints(self):
+        self.cfg(checks=["true"])
+        i = self.ready()
+        self.skip_to_code()
+        self.build_unit(i)
+        self.commit_all()
+        self.ok("release")
+        self.requirements(i, extra="\n| AC-2 | refund day 15 | 409 |\n")  # approved again after `release`
+        self.approve("REQUIREMENTS")
+        row = [l.strip() for l in self.status().splitlines() if l.strip().startswith("- [-] Release")]
+        with open(os.path.join(REPO, "README.md"), encoding="utf-8") as f:
+            readme = f.read()
+        quoted = "[-] Release — release.md (written <日期>) does not list <种类> approved: run `release` again"
+        self.assertIn("``%s``" % quoted, readme)
+        self.assertNotIn("release.md was written (", readme)
+        pattern = re.escape(quoted).replace(re.escape("<日期>"), r"\d{4}-\d{2}-\d{2}").replace(
+            re.escape("<种类>"), "[A-Z]+")
+        self.assertEqual(len(row), 1, row)
+        self.assertRegex(row[0], "^- " + pattern + "$")
+
+
 if __name__ == "__main__":
     unittest.main()

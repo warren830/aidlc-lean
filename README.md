@@ -316,7 +316,7 @@ lean doctor                                          检查安装
 
 - `stage done` 在文档还没写、或者还是模板原样时会拒绝。
 - 发布以后，只有运维阶段和 ci-pipeline 还接受 `stage` 命令。
-- `request RELEASE` 只在 `lean release` 现在能通过、release.md 是 `lean release` 为当前代码写的、而且写完以后没有再记下别的审批或驳回（RELEASE 自己的不算）时才给口令。人打的 `approve RELEASE` 也按同样的条件查：比如这时 IDEATION 或需求过期了、被驳回了，或者又重新批过了，这条审批不算，日志里记一条 APPROVAL_REFUSED。这时阶段进度里那一行不给口令：过期或驳回时是 `[-] Release — RELEASE requested; the approval waits: not ready to release: ...`；重新批过以后是 ``[-] Release — release.md was written (<日期>) before <种类> approved: run `release` again``，要重新 `lean release`（新的 release.md 会列上新的审批），再请求。RELEASE 自己被驳回不算：没改代码的话，同一份 release.md 照人的意见改好，就能再请求。
+- `request RELEASE` 只在 `lean release` 现在能通过、release.md 是 `lean release` 为当前代码写的、而且写完以后没有再记下别的审批或驳回（RELEASE 自己的不算）时才给口令。人打的 `approve RELEASE` 也按同样的条件查：比如这时 IDEATION 或需求过期了、被驳回了，或者又重新批过了，这条审批不算，日志里记一条 APPROVAL_REFUSED。这时阶段进度里那一行不给口令：过期或驳回时是 `[-] Release — RELEASE requested; the approval waits: not ready to release: ...`；重新批过以后是 ``[-] Release — release.md (written <日期>) does not list <种类> approved: run `release` again``，要重新 `lean release`（新的 release.md 会列上新的审批），再请求。RELEASE 自己被驳回不算：没改代码的话，同一份 release.md 照人的意见改好，就能再请求。
 
 ## hook 会拦的事
 
