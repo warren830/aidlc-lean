@@ -114,7 +114,7 @@ AI-DLC 有 11 档（scope），这里列三档：
 
 v0.3 新加的构想段（含 IDEATION 审批和 `ideation` 关卡）、CI 流水线和运维段，到现在只有单元测试，还没在 Kiro 里跑过。
 
-**和纯 vibe 比过**（2026-11-10，Kiro v3 + Kimi K3，4 道题各 3 次）：小题上 Lean 积分约 5.6 倍、时间约 4 倍，质量一样；"需求有空白"那题 Lean 的第一次交付 3 次都比 vibe 高（60/57/56 对 50/48/55，满分 60）。报告在 `ai-native-dev/k3-cli-compare/报告-vibe对比Lean-K3-3轮汇总-20261110.md`。
+**和纯 vibe 比过**（2026-11-10，Kiro v3 + Kimi K3，4 道题各 3 次）：小题上 Lean 积分约 5.6 倍、时间约 4 倍，质量一样。vibe 和 Lean 的对比结果见报告：`ai-native-dev/k3-cli-compare/报告-vibe对比Lean-K3-3轮汇总-20261110.md`。
 
 **正面对比**：还没有 Lean 和 AI-DLC 在同一个任务上比过。第二期测试方案就是为了这个：A 纯 vibe、B Lean、B+ Lean + 质量包、C AI-DLC Express，每组 3 条链。等 PRD 待定点定下来、测试写好再跑。
 

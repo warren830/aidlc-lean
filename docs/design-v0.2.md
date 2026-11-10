@@ -327,4 +327,4 @@ A fixes-only release: the round-1 review items R1-106 to R1-120, one false block
 
 ### 10.3 Docs
 
-- README "什么时候用 Lean": small, clear requirements use plain Kiro (vibe); Lean is for requirements with gaps, cross-team work and regulated work. Reason: the 3-round benchmark (Kiro v3 + Kimi K3): on the small task Lean cost about 5.6× the credits and 4× the time with the same quality; on the task with gaps Lean's first delivery beat vibe all 3 times (60/57/56 vs 50/48/55 of 60). COMPARISON follows.
+- README "什么时候用 Lean": small, clear requirements use plain Kiro (vibe); Lean is for requirements with gaps, cross-team work and regulated work. Reason: the 3-round benchmark (Kiro v3 + Kimi K3): on the small task Lean cost about 5.6× the credits and 4× the time with the same quality. The vibe vs Lean results are in the report. COMPARISON follows.
