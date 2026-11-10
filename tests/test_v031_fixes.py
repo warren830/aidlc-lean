@@ -15,7 +15,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from test_aidlc_lean import DOCS, SUMMARY, TOOL  # noqa: E402
+from test_aidlc_lean import DOCS, REPO, SUMMARY, TOOL  # noqa: E402
 from test_v02_live_fixes import BEGIN, END, Live  # noqa: E402
 
 
@@ -148,6 +148,96 @@ class FingerprintExclude(Fix31):
         r = self.bash("git commit -m app")
         self.assertEqual(r.returncode, 2)
         self.assertIn("blocked (verify)", r.stderr)
+
+
+# ---------------------------------------------------------------- R1-109: a merge conflict across the region's end
+class MergeConflict(Fix31):
+    def clone(self):
+        b = os.path.realpath(tempfile.mkdtemp(prefix="lean-clone-"))
+        self.addCleanup(shutil.rmtree, b, True)
+        for cmd in (["git", "clone", "-q", self.dir, b], ["git", "-C", b, "config", "user.email", "b@example.com"],
+                    ["git", "-C", b, "config", "user.name", "B"]):
+            p = subprocess.run(cmd, capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stderr)
+        return b
+
+    def run_in(self, d, *args):
+        p = subprocess.run(TOOL + list(args), cwd=d, capture_output=True, text=True, env=self.env())
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        return p
+
+    @staticmethod
+    def set_status(path, status):
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(re.sub(r"(?m)^Status: .*$", "Status: " + status, text, count=1))
+
+    def conflicted(self):
+        """Two clones each record a stage and change the Status line; the merge conflicts in aidlc-state.md, in one
+        hunk that runs across the region's end marker into the Session notes."""
+        self.cfg(checks=["true"])
+        i = self.intent()
+        self.commit_all("intent")
+        b = self.clone()
+        self.run_in(b, "init")
+        self.run_in(b, "use", i)
+        self.run_in(b, "stage", "skip", "user-stories", "--reason", "b: no stories")
+        self.set_status(os.path.join(b, DOCS, i, "aidlc-state.md"), "b: stories skipped")
+        for cmd in (["git", "-C", b, "add", "-A"], ["git", "-C", b, "commit", "-qm", "b"]):
+            self.assertEqual(subprocess.run(cmd, capture_output=True).returncode, 0)
+        self.ok("stage", "skip", "reverse-engineering", "--reason", "a: greenfield")
+        path = os.path.join(self.dir, self.ipath(i, "aidlc-state.md"))
+        self.set_status(path, "a: reverse engineering skipped")
+        self.commit_all("a")
+        p = self.sh(["git", "pull", "-q", "--no-rebase", "--no-edit", b, "HEAD"])
+        self.assertNotEqual(p.returncode, 0)
+        self.assertEqual(self.sh(["git", "diff", "--name-only", "--diff-filter=U"]).stdout.split(),
+                         [self.ipath(i, "aidlc-state.md")])
+        text = self.read(self.ipath(i, "aidlc-state.md"))
+        last = text.rindex("\n<<<<<<< ")
+        self.assertLess(last, text.index(END), "the precondition: a conflict hunk spans the end marker")
+        self.assertLess(text.index(END), text.index("\n>>>>>>> ", last))
+        return i, path
+
+    def test_r1_109_the_region_is_rewritten_and_the_conflict_outside_it_is_kept_whole(self):
+        i, path = self.conflicted()
+        p = self.ok("verify")  # README and the multi-team skill: verify rewrites what the tool writes
+        self.assertIn("merge conflict", p.stdout)
+        text = self.read(self.ipath(i, "aidlc-state.md"))
+        self.assertEqual((text.count(BEGIN), text.count(END)), (1, 1))
+        lines = text.splitlines()
+        marks = [(n, l.split(" ")[0]) for n, l in enumerate(lines) if re.match(r"^(<{7}|={7}|>{7})( |$)", l)]
+        self.assertEqual([m for _, m in marks], ["<<<<<<<", "=======", ">>>>>>>"])  # one whole conflict
+        end = lines.index(END)
+        self.assertGreater(marks[0][0], end)  # outside the region, in the Session notes
+        hunk = "\n".join(lines[marks[0][0]:marks[2][0] + 1])
+        self.assertIn("Status: a: reverse engineering skipped", hunk)
+        self.assertIn("Status: b: stories skipped", hunk)
+        region = text[text.index(BEGIN):text.index(END)]
+        self.assertIn("- Skipped: a: greenfield", region)  # both clones' ledgers, regenerated
+        self.assertIn("- Skipped: b: no stories", region)
+        self.assertNotIn("<<<<<<<", region)
+        self.ok("status")
+        self.assertEqual(self.read(self.ipath(i, "aidlc-state.md")), text)  # stable while the conflict stays
+        resolved = "\n".join(lines[:marks[0][0]] + ["Status: both skipped"] + lines[marks[2][0] + 1:]) + "\n"
+        self.put(self.ipath(i, "aidlc-state.md"), resolved)
+        p = self.ok("status")
+        self.assertNotIn("merge conflict", p.stdout)
+        self.assertNotIn("<<<<<<<", self.read(self.ipath(i, "aidlc-state.md")))
+
+    def test_r1_109_markers_it_cannot_read_leave_the_page_alone(self):
+        i = self.intent()
+        self.ok("stage", "skip", "user-stories", "--reason", "no stories")
+        text = self.state(i)
+        broken = text.replace("## Session notes", "=======\n## Session notes\n>>>>>>> 1a2b3c4d", 1)  # half a conflict
+        self.put(self.ipath(i, "aidlc-state.md"), broken)
+        p = self.ok("stage", "skip", "reverse-engineering", "--reason", "greenfield")
+        self.assertIn("Recorded: Reverse Engineering skipped", p.stdout)
+        self.assertIn("merge conflict markers", p.stdout)
+        self.assertEqual(self.state(i), broken)  # nothing rewritten
+        self.assertEqual(len([e for e in self.events("STAGE_SKIPPED") if e["data"]["stage"] == "reverse-engineering"]),
+                         1)  # the record is in the ledger all the same
 
 
 if __name__ == "__main__":

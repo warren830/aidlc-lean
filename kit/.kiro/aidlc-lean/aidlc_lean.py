@@ -2075,9 +2075,89 @@ def progress_region(pj, intent):
                      ["", "## Stage log"] + (log or ["", "(nothing recorded yet)"]) + [END_MARK])
 
 
+CONFLICT_MARK_RE = re.compile(r"^(<{7}|\|{7}|={7}|>{7})(?:[ \t]|$)")
+
+
+class ConflictMarkers(Exception):
+    """aidlc-state.md holds git merge-conflict markers that do not pair up: the page is left as it is."""
+
+
+def conflict_sides(text):
+    """None when text holds no git merge conflict; else (ours, theirs, opening line, closing line): the text with
+    every conflict hunk resolved to one side (a diff3 base section dropped), and the first hunk's marker lines.
+    Raises ConflictMarkers when the markers do not pair up (a hunk cut short, a stray `>>>>>>>`). A `=======` line
+    outside a hunk is text (a Markdown heading underline)."""
+    if not re.search(r"(?m)^(<{7}|>{7})(?:[ \t]|$)", text):
+        return None
+    ours, theirs, opened, closed, state = [], [], None, None, "out"
+    for line in text.splitlines(True):
+        m = CONFLICT_MARK_RE.match(line)
+        mark = m.group(1)[0] if m else ""
+        if state == "out" and mark == "<":
+            state, opened = "ours", opened or line
+        elif state == "out" and mark == ">":
+            raise ConflictMarkers("a `>>>>>>>` line without its `<<<<<<<`")
+        elif state == "out":
+            ours.append(line)
+            theirs.append(line)
+        elif state in ("ours", "base") and mark == "=":
+            state = "theirs"
+        elif state == "ours" and mark == "|":
+            state = "base"
+        elif state == "theirs" and mark == ">":
+            state, closed = "out", closed or line
+        elif mark:
+            raise ConflictMarkers("a `%s` line where it cannot be" % m.group(1))
+        elif state == "ours":
+            ours.append(line)
+        elif state == "theirs":
+            theirs.append(line)
+    if state != "out":
+        raise ConflictMarkers("a conflict that is not closed by `>>>>>>>`")
+    end = lambda line: line if line.endswith("\n") else line + "\n"  # noqa: E731
+    return "".join(ours), "".join(theirs), end(opened), end(closed)
+
+
+def conflict_text(a, b, opened, closed):
+    """a and b as one text: their common first and last lines, and between them one conflict hunk with git's
+    markers holding what differs (nothing when a == b)."""
+    if a == b:
+        return a
+    x, y = a.splitlines(True), b.splitlines(True)
+    p = 0
+    while p < min(len(x), len(y)) and x[p] == y[p]:
+        p += 1
+    s = 0
+    while s < min(len(x), len(y)) - p and x[len(x) - 1 - s] == y[len(y) - 1 - s]:
+        s += 1
+    whole = lambda lines: [l if l.endswith("\n") else l + "\n" for l in lines]  # noqa: E731
+    return "".join(x[:p] + [opened] + whole(x[p:len(x) - s]) + ["=======\n"] + whole(y[p:len(y) - s]) + [closed]
+                   + x[len(x) - s:])
+
+
 def replace_region(text, region):
-    """Put region between the lean markers; everything else stays as it is. Without (both) markers the region
-    goes right after the header (the title line and the lines that follow it)."""
+    """Put region between the lean markers; everything else stays as it is. With a git merge conflict in the page
+    (two clones' aidlc-state.md), each side gets the region, and what differs outside it stays one whole conflict
+    hunk for people to merge (the Session notes): a hunk that ran across a marker is cut there, never left half.
+    Raises ConflictMarkers when the markers do not pair up."""
+    sides = conflict_sides(text)
+    if not sides:
+        return plain_replace_region(text, region)
+    ours, theirs, opened, closed = sides
+    parts = []
+    for side in (ours, theirs):
+        new = plain_replace_region(side, region)
+        k = new.index(region)
+        before, after = new[:k], new[k + len(region):]
+        parts.append((before + ("\n" if before and not before.endswith("\n") else ""),
+                      after if after.startswith("\n") else "\n" + after))
+    (b1, a1), (b2, a2) = parts
+    return conflict_text(b1, b2, opened, closed) + region + conflict_text(a1, a2, opened, closed)
+
+
+def plain_replace_region(text, region):
+    """replace_region for a page without merge conflict markers. Without (both) markers the region goes right
+    after the header (the title line and the lines that follow it)."""
     b = text.find(BEGIN_MARK)
     e = text.find(END_MARK, b + len(BEGIN_MARK)) if b >= 0 else -1
     if b >= 0 and e >= 0:
@@ -2093,7 +2173,8 @@ def replace_region(text, region):
 
 
 def update_state_doc(pj, intent):
-    """Regenerate only the progress region of aidlc-state.md; the rest (Session notes) belongs to the agent."""
+    """Regenerate only the progress region of aidlc-state.md; the rest (Session notes) belongs to the agent.
+    (path, note) or None without an intent; note says what a merge conflict in the page leaves to people."""
     if not intent or intent not in pj.list_intents():
         return None
     path = pj.doc(intent, STATE_DOC)
@@ -2102,19 +2183,33 @@ def update_state_doc(pj, intent):
         text = read_text(path, None)
         if text is None:
             text = template(STATE_DOC, **doc_vars(pj, intent))
+        conflict = conflict_sides(text) is not None  # raises ConflictMarkers: then the page stays as it is
         new = replace_region(text, progress_region(pj, intent))
         if new != text:
             write_text(path, new)
-    return path
+    if conflict:
+        return path, ("aidlc-state.md has a merge conflict: the part between the lean markers was rewritten from "
+                      "the ledger; merge the conflict left outside it (the Session notes) by hand, remove its markers "
+                      "and commit." if conflict_sides(new) else "aidlc-state.md had a merge conflict only in the part "
+                      "between the lean markers: rewritten from the ledger, so `git add` it.")
+    return path, None
 
 
 def refresh_state_doc(pj, intent, prefix=""):
     """update_state_doc for commands and hooks: the record is already in the ledger, so a failure here only
     leaves the page behind until the next command."""
     try:
-        update_state_doc(pj, intent)
+        _, note = update_state_doc(pj, intent) or (None, None)
+    except ConflictMarkers as e:
+        print("%sCould not update aidlc-state.md: its merge conflict markers do not pair up (%s), so it was left as "
+              "it is. Fix them by hand (keep the Session notes; the part between the lean markers may take either "
+              "side, the next command rewrites it), then run `%s status`." % (prefix, e, TOOL))
+        return
     except Exception as e:  # noqa: BLE001
         print("%sCould not update aidlc-state.md (%s: %s)." % (prefix, type(e).__name__, e))
+        return
+    if note:
+        print(prefix + note)
 
 
 def strip_region(text):

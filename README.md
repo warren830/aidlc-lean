@@ -371,7 +371,7 @@ hook 是 Kiro 在会话开始、你发消息、AI 调用工具前自动跑的脚
 - Session notes 每个团队一段：`### Next (team <名字>)`，里面是这个团队的状态、下一步和卡点，各改各的，不会互相覆盖。新开对话时，hook 先注入本团队那一段；
 - 要改别的团队的契约，先 `lean cr new`，填好推上去；对方团队在**自己的 clone** 里跑 `lean request CR-...` 并批准；你 pull 下来之后，hook 才放行改那个契约。只放行提出申请的团队，只放行 CR 里列的文件，只到 CR 关闭为止：对方把改动做完后，用 `lean cr close <编号> --reason "..."` 关掉（两个团队都能关）。改自己团队的契约不用 CR；
 - 契约文件算代码：和代码一样要等审批才能写（受监管模式下还要所属单元的 PLAN），所以在 unit-of-work.md 里把契约路径写进所属单元的 Paths 列；审批前的契约草稿写在 application-design.md 里。改了契约，要重新 verify 才能提交和发布；
-- 两个 clone 合并时，工具生成的内容（aidlc-state.md 里生成的那段、build-and-test-summary.md）可能冲突。跑一次 `lean verify` 会把两处都重写，再提交；Session notes 手工合并。审计日志每个 clone 一个文件，不会冲突；
+- 两个 clone 合并时，工具生成的内容（aidlc-state.md 里生成的那段、build-and-test-summary.md）可能冲突。跑一次 `lean verify` 会把两处都按日志重写；冲突跨到生成段外面（Session notes）的，外面那部分留成一块完整的冲突（`<<<<<<<` 到 `>>>>>>>`），手工合并、删掉标记再提交。冲突标记对不上（比如只剩 `=======` 和 `>>>>>>>`）时，工具不改这个文件，只提示先手工修好。审计日志每个 clone 一个文件，不会冲突；
 - 代码归属和合并审批交给 GitLab 的 CODEOWNERS 和 MR 审批，kit 只管契约。
 
 **跨多天**：
