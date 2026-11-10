@@ -376,7 +376,13 @@ for p in .kiro/skills/pstack-* .kiro/steering/aidlc-lean-pstack.md; do
   fi
   break
 done
-python3 .kiro/aidlc-lean/aidlc_lean.py init ${ARGS[@]+"${ARGS[@]}"}
+# With a lean.json already there, init would only warn about --regulated / --multi-team; this installer says it below.
+INIT_ARGS=()
+for a in ${ARGS[@]+"${ARGS[@]}"}; do
+  if [ "$CFG_EXISTED" = 1 ] && { [ "$a" = --regulated ] || [ "$a" = --multi-team ]; }; then continue; fi
+  INIT_ARGS+=("$a")
+done
+python3 .kiro/aidlc-lean/aidlc_lean.py init ${INIT_ARGS[@]+"${INIT_ARGS[@]}"}
 if [ "$CFG_EXISTED" = 1 ] && { [ "$WANT_REGULATED" = 1 ] || [ "$WANT_MULTI_TEAM" = 1 ]; }; then
   # init never changes an existing lean.json: say so instead of leaving the mode flags silently unused.
   # -I: a program read from stdin would otherwise import from the project folder (e.g. a json.py there).

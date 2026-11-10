@@ -408,5 +408,24 @@ class NewName(Fix31):
         self.assertTrue(self.tool("new").stdout.startswith("usage: new <slug>"))
 
 
+# ---------------------------------------------------------------- R1-118: `lean init --regulated` on a configured project
+class InitModeFlags(Fix31):
+    def test_r1_118_init_says_the_mode_flags_were_not_applied(self):
+        p = self.ok("init", "--regulated")
+        self.assertIn("WARNING: aidlc-docs/lean.json already exists, so it was kept as it is (regulated: false, "
+                      "multi_team: false): --regulated was NOT applied. To change the mode, a person edits "
+                      "\"regulated\" / \"multi_team\" in aidlc-docs/lean.json and commits it.", p.stdout)
+        self.assertFalse(json.loads(self.read("aidlc-docs/lean.json"))["regulated"])
+        self.assertIn("| mode: standard", self.status())
+        p = self.ok("init", "--multi-team", "--regulated")
+        self.assertIn("--regulated and --multi-team was NOT applied", p.stdout)
+        self.assertIn("For multi-team, then run `python3 .kiro/aidlc-lean/aidlc_lean.py init --team NAME`", p.stdout)
+        self.cfg(regulated=True)
+        self.assertNotIn("WARNING", self.ok("init", "--regulated").stdout)  # already that mode
+        p = self.sh(["bash", os.path.join(REPO, "install.sh"), self.dir, "--multi-team"])
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual((p.stdout + p.stderr).count("WARNING"), 1)  # install.sh's own, not a second one
+
+
 if __name__ == "__main__":
     unittest.main()

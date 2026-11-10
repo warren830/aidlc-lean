@@ -3408,6 +3408,17 @@ def cmd_init(pj, args):
         cfg["multi_team"] = "--multi-team" in args
         write_text(cfg_path, json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
         print("Created %s/lean.json" % DOCS)
+    else:  # init never changes an existing lean.json: say so instead of leaving a mode flag silently unused
+        flags = (("regulated", "--regulated"), ("multi_team", "--multi-team"))
+        skipped = [flag for key, flag in flags if flag in args and not pj.cfg.get(key)]
+        if skipped:
+            print("WARNING: %s/lean.json already exists, so it was kept as it is (%s): %s was NOT applied. To change "
+                  "the mode, a person edits \"regulated\" / \"multi_team\" in %s/lean.json and commits it." % (
+                      DOCS, ", ".join("%s: %s" % (k, "true" if pj.cfg.get(k) else "false") for k, _ in flags),
+                      " and ".join(skipped), DOCS))
+            if "--multi-team" in skipped:
+                print("  For multi-team, then run `%s init --team NAME` so it creates %s/OWNERS." % (
+                    TOOL, pj.cfg["contracts_dir"].rstrip("/")))
     pj = Project(pj.root)
     os.makedirs(pj.ledger_dir(), exist_ok=True)
     if pj.cfg.get("multi_team"):

@@ -261,7 +261,7 @@ Status: released (RELEASE approved)
 - install.sh 先只读、不改：读完模板和清单，定好怎么做，再查它要写的每个文件都写得了（kit 的脚本和模板、hook、常驻说明、技能卡、pstack 包、`aidlc-docs/audit/` 和 `.aidlc-lean/`；还缺 `.aidlc-lean/` 那一行时的 `.gitignore`；多团队时的契约目录）。还没有的文件和目录，查的是离它最近的已有目录能不能写；`aidlc-docs/lean.json` 也要是合法的 JSON。有一条不行，安装就停下，打出 "…; nothing was changed."，真的什么都没改：`git init` 和建目录都还没做。
 - 查过以后才动文件。万一后面还是出错（比如磁盘满了，或者 `lean init` 失败），会打出 "install.sh: stopped part way …"：有些 kit 文件可能已经换成新的。把问题修好再跑一次就行，重跑是安全的。
 - 清单不是 UTF-8，或者有认不出的行，install.sh 打一条 `note:`，照样读里面的记录，再把清单重写一遍。
-- 已经有 lean.json 时再加 `--regulated` 或 `--multi-team`，模式**不会变**，安装脚本会打出 WARNING。要改模式，由人改 lean.json 里的 `"regulated"` / `"multi_team"` 并提交；改成多团队后，再带 `--team 名字` 重跑一次，生成 `aidlc-docs/contracts/OWNERS`。
+- 已经有 lean.json 时再加 `--regulated` 或 `--multi-team`，模式**不会变**，安装脚本会打出 WARNING（直接跑 `lean init --regulated` 也一样）。要改模式，由人改 lean.json 里的 `"regulated"` / `"multi_team"` 并提交；改成多团队后，再带 `--team 名字` 重跑一次，生成 `aidlc-docs/contracts/OWNERS`。
 - **从 v0.2 升级**：重跑 install.sh 就行，lean.json 不用改。v0.2 没有 `kit-templates.sha256`，install.sh 认得 v0.2.0 原样的模板；和它不一样的，当成人改过的留着，新版写进 `.kit-new`。v0.2 开的 intent 照常接着做：阶段进度开头多一行 `- [S] Ideation — not used (no Ideation record: the intent was started before AI-DLC Lean 0.3)`，后面多出 CI 流水线和运维几行，用不上就跳过。v0.2 里叫 `ci-pipeline` 的单元照常能用，不用改名：它的页面在 `construction/ci-pipeline/` 下的子目录里，计划在 `construction/plans/` 里，和 CI 流水线阶段的 `construction/ci-pipeline/ci-config.md` 不冲突；受监管模式下，它的 PLAN 关卡也和 v0.2 一样。
 - **从 v0.1 升级**（v0.1 的东西都在 `aidlc/` 下）：
   1. install.sh 看到 `aidlc/lean.json` 会停下，什么都不改。
