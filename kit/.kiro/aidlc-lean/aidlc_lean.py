@@ -3445,6 +3445,10 @@ def cmd_new(pj, args):
     opts, err = parse_opts(args[1:], ("--title",)) if args and not args[0].startswith("--") else (None, "")
     slug = re.sub(r"[^a-z0-9-]+", "-", args[0].lower()).strip("-") if opts is not None else ""
     if not slug:
+        if opts is not None:  # a name was given, with no letter or digit a folder name can use (`new 退款`)
+            print("Cannot start an intent named `%s`: the intent name names its folder: use a-z, 0-9 and - (e.g. "
+                  "`new refunds`); a title in any language goes in --title (e.g. `new refunds --title \"%s\"`)."
+                  % (args[0], opts.get("--title") or args[0]))
         print("usage: new <slug> [--title T] [--ideation]%s" % ("  (%s)" % err if err else ""))
         return 1
     title = opts.get("--title") or slug.replace("-", " ")

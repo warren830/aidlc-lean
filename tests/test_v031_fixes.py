@@ -395,5 +395,18 @@ class IntentDates(Fix31):
         self.assertEqual(intent[:6], utc.strftime("%y%m%d"))  # UTC, like every date the tool records
 
 
+# ---------------------------------------------------------------- R1-117: `lean new` with a Chinese name
+class NewName(Fix31):
+    def test_r1_117_a_name_without_a_folder_letter_says_why(self):
+        for args in (["new", "退款"], ["new", "退款", "--title", "退款"], ["new", "--ideation", "退款"]):
+            p = self.tool(*args)
+            self.assertEqual(p.returncode, 1, args)
+            self.assertIn("the intent name names its folder: use a-z, 0-9 and - (e.g. `new refunds`); a title in any "
+                          "language goes in --title (e.g. `new refunds --title \"退款\"`).", p.stdout)
+        p = self.ok("new", "refunds", "--title", "退款")
+        self.assertIn("# AI-DLC State: 退款", self.state(re.search(r"aidlc-docs/(\S+) \(", p.stdout).group(1)))
+        self.assertTrue(self.tool("new").stdout.startswith("usage: new <slug>"))
+
+
 if __name__ == "__main__":
     unittest.main()
