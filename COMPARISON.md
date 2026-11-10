@@ -13,7 +13,8 @@
   - 运维段只写文档，部署、建环境、压测要靠团队自己的 CI/CD 和人；
   - 构想和运维段还没在 Kiro 里真跑过，只有单元测试；
   - 是你自己维护的早期版本；
-  - 还没和 AI-DLC 在同一个任务上正面比过。
+  - 还没和 AI-DLC 在同一个任务上正面比过；
+  - 小而清楚的需求不划算：和直接用 Kiro（vibe）比，积分约 5.6 倍、时间约 4 倍，质量一样（2026-11-10 的对比，见 README「什么时候用 Lean」）。这类需求直接用 Kiro。
 
 ## 先说清楚
 
@@ -113,6 +114,8 @@ AI-DLC 有 11 档（scope），这里列三档：
 
 v0.3 新加的构想段（含 IDEATION 审批和 `ideation` 关卡）、CI 流水线和运维段，到现在只有单元测试，还没在 Kiro 里跑过。
 
+**和纯 vibe 比过**（2026-11-10，Kiro v3 + Kimi K3，4 道题各 3 次）：小题上 Lean 积分约 5.6 倍、时间约 4 倍，质量一样；"需求有空白"那题 Lean 的第一次交付 3 次都比 vibe 高（60/57/56 对 50/48/55，满分 60）。报告在 `ai-native-dev/k3-cli-compare/报告-vibe对比Lean-K3-3轮汇总-20261110.md`。
+
 **正面对比**：还没有 Lean 和 AI-DLC 在同一个任务上比过。第二期测试方案就是为了这个：A 纯 vibe、B Lean、B+ Lean + 质量包、C AI-DLC Express，每组 3 条链。等 PRD 待定点定下来、测试写好再跑。
 
 ## 交给客户前要想清楚的
@@ -128,7 +131,8 @@ v0.3 新加的构想段（含 IDEATION 审批和 `ideation` 关卡）、CI 流�
 | 要 AI 自己部署、建环境、跑压测 | AI-DLC（Lean 的规则是 AI 不部署） |
 | 产品经理先做构想，或者要留下部署、运维的文档，部署交给自己的 CI/CD | 都可以：Lean 每个阶段一页、可选，构想只批一次 IDEATION；AI-DLC 更全，每个阶段多份产物，但要选带这两段的档（构想在 Enterprise、feature、mvp、poc 里；Classic 两段都不跑） |
 | 用 Cursor、Claude Code、Copilot 等工具 | AI-DLC（Lean 只支持 Kiro CLI v3） |
-| 用 Kiro CLI，想保留 AI-DLC 的阶段和文档，又不想每一步都停 | Lean |
+| 小而清楚的需求 | 都不用：直接用 Kiro（vibe）。小题上 Lean 积分约 5.6 倍、时间约 4 倍，质量一样 |
+| 用 Kiro CLI，需求有空白、要跨团队或受监管，想保留 AI-DLC 的阶段和文档，又不想每一步都停 | Lean |
 | 主要用 K3 这类模型 | Lean 实测过；AI-DLC 官方推荐 Opus 4.8 |
 | 受监管，要留可核查的记录 | Lean 的受监管模式，或 AI-DLC Enterprise（更全，也更重）；两者都要配 GitLab 的保护分支和 MR 审批 |
 | 多个团队在一个仓库里 | 都可以：AI-DLC 有单元认领和并行构建，Lean 有契约归属和 CR |
