@@ -6,6 +6,7 @@ phases (live-1 to live-8).
 
 Run: python3 -m unittest discover -s tests -v
 """
+import json
 import os
 import re
 import shutil
@@ -13,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_aidlc_lean import DOCS, REPO, SUMMARY, TOOL  # noqa: E402
@@ -298,6 +300,27 @@ class RejectNoSpace(Requested):
         self.say("reject REQUIREMENTSX now")  # a longer word is not the kind
         self.say("reject DESIGNS")
         self.assertEqual(len(self.events("REJECTED")), n)
+
+
+# ---------------------------------------------------------------- R1-113: only `git commit` goes through the commit gate
+class CommitWord(Fix31):
+    def test_r1_113_commands_that_only_mention_commit_pass_and_real_commits_are_gated(self):
+        self.cfg(checks=["true"])
+        self.commit_all("init")
+        self.put("app.py", "x = 1\n")  # an unverified code change in the working tree
+        for c in ('git log -1 --format="%h %s (last commit)"', "git merge --no-commit --no-ff HEAD",
+                  "git stash push -m 'wip before commit'", "git log -1 --stat", "git show HEAD --stat | grep commit",
+                  "git commit --dry-run -m x", "git status && echo 'commit later'",
+                  "python3 .kiro/aidlc-lean/aidlc_lean.py stage done units --note 'git commit after this'"):
+            r = self.bash(c)
+            self.assertEqual(r.returncode, 0, (c, r.stderr))
+        for c in ("git commit -m x", "git -C . commit -m x", "git add -A && git commit -qm x",
+                  "git -c user.name=x commit -am x", "GIT_AUTHOR_NAME=x git commit -m y", "sh -c 'git commit -m x'",
+                  "cd . && git commit -m 'fix the commit gate'", 'git commit -m "$(cat msg.txt)"',
+                  "git --no-pager commit -m x"):
+            r = self.bash(c)
+            self.assertEqual(r.returncode, 2, c)
+            self.assertIn("blocked (verify)", r.stderr, c)
 
 
 if __name__ == "__main__":

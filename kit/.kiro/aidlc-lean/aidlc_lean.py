@@ -85,6 +85,7 @@ import json
 import os
 import posixpath
 import re
+import shlex
 import shutil
 import socket
 import stat
@@ -3028,7 +3029,7 @@ def guard_shell(pj, intent, cmd):
                              "themselves if it is really needed." % pat, intent, d)
         except re.error:
             continue
-    if re.search(r"\bgit\b[^|;&]*\bcommit\b", cmd) and "--dry-run" not in cmd:
+    if is_commit_line(scan):
         if not pj.cfg.get("checks"):
             if pj.cfg.get("regulated"):
                 return block(pj, "verify", "regulated mode needs checks in %s/lean.json before commits." % DOCS,
@@ -3059,6 +3060,54 @@ def touches_records(cmd):
             continue
         return True
     return False
+
+
+# git's global options that take the next word as their value (`git -C <dir> commit`)
+GIT_VALUE_OPTIONS = ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env")
+
+
+def shell_word(text):
+    """One word of a command line as the shell passes it on (quotes and backslashes removed); the text itself
+    when shlex cannot read it."""
+    try:
+        return "".join(shlex.split(text))
+    except ValueError:
+        return text
+
+
+def git_calls(cmd, depth=0):
+    """[(subcommand, args)] of the git calls on a shell command line, in order: every `git` word with git's global
+    options after it skipped (`git -C dir commit`, `env X=1 git commit`), also inside a word that is itself a script
+    (`sh -c "git commit ..."`, `eval '...'`). None when the line holds what shell_commands cannot read exactly."""
+    cmds = shell_commands(cmd)
+    if cmds is None:
+        return None
+    out = []
+    for toks in cmds:
+        words = [shell_word(cmd[s:e]) for s, e, is_word in toks if is_word]
+        for j, w in enumerate(words):
+            if posixpath.basename(w) == "git":
+                k = j + 1
+                while k < len(words) and words[k].startswith("-") and words[k] != "--":
+                    k += 2 if words[k] in GIT_VALUE_OPTIONS else 1
+                if k < len(words):
+                    out.append((words[k], words[k + 1:]))
+            elif depth < 3 and re.search(r"\s", w) and re.search(r"\bgit\b", w):
+                inner = git_calls(w, depth + 1)
+                if inner is None:
+                    return None
+                out += inner
+    return out
+
+
+def is_commit_line(cmd):
+    """Does the command line run `git commit` (not with --dry-run)? Read with its quoting, so `git log --format
+    '... commit'`, `git merge --no-commit` and `git stash -m 'before commit'` are no commits. A line that
+    shell_commands cannot read exactly ($, backticks, a here-document) counts when it names git and commit."""
+    calls = git_calls(cmd)
+    if calls is None:
+        return bool(re.search(r"\bgit\b[^|;&]*\bcommit\b", cmd)) and "--dry-run" not in cmd
+    return any(sub == "commit" and "--dry-run" not in args for sub, args in calls)
 
 
 NOTE_OPTIONS = ("--note", "--reason", "--title")
