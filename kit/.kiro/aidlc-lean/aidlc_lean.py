@@ -246,7 +246,8 @@ KIND_RE = r"IDEATION|REQUIREMENTS|DESIGN|INCEPTION|PLAN|RELEASE|CR-\w+-\d+"  # C
 APPROVE_RE = re.compile(  # the whole line must be the approval, so "approve design after X" does not count
     r"(?im)^[ \t]*(approve|approved|批准|同意)[ \t]*[:：]?[ \t]*(" + KIND_RE + r")"
     r"(?:[ \t]+([0-9a-fA-F]{6,64}))?[ \t]*(\(via[^)\n]{1,200}\))?[ \t]*[.!。！]?[ \t]*$")
-REJECT_RE = re.compile(r"(?im)^[ \t]*(reject|驳回|拒绝)[ \t]*[:：]?[ \t]*(" + KIND_RE + r")\b(.*)$")
+# the kind ends where no ASCII letter, digit or _ follows: Chinese text may come right after it (驳回 DESIGN需要…)
+REJECT_RE = re.compile(r"(?im)^[ \t]*(reject|驳回|拒绝)[ \t]*[:：]?[ \t]*(" + KIND_RE + r")(?![A-Za-z0-9_])(.*)$")
 NEAR_APPROVAL_RE = re.compile(r"(?im)^[ \t]*(approve|approved|批准|同意)[ \t]*[:：]?[ \t]*"
                               r"(SPEC|IDEATION|REQUIREMENTS|DESIGN|INCEPTION|PLAN|RELEASE|CR-)")
 # spaces a Chinese input method or a copy from a web page may put in an approval line: read as plain spaces

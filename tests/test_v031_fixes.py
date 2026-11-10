@@ -286,5 +286,19 @@ class FullWidthSpace(Requested):
         self.assertIn("Recorded: REQUIREMENTS rejected", out.stdout)
 
 
+# ---------------------------------------------------------------- R1-112: no space between the kind and the reason
+class RejectNoSpace(Requested):
+    def test_r1_112_a_rejection_with_no_space_after_the_kind_is_recorded(self):
+        self.requested()
+        out = self.say("驳回 REQUIREMENTS需要补充验收标准")
+        self.assertIn("Recorded: REQUIREMENTS rejected by the human", out.stdout)
+        self.assertEqual(self.events("REJECTED")[-1]["data"]["words"], "驳回 REQUIREMENTS需要补充验收标准")
+        self.assertIn("- [-] Requirements Analysis — rejected", self.status())
+        n = len(self.events("REJECTED"))
+        self.say("reject REQUIREMENTSX now")  # a longer word is not the kind
+        self.say("reject DESIGNS")
+        self.assertEqual(len(self.events("REJECTED")), n)
+
+
 if __name__ == "__main__":
     unittest.main()
